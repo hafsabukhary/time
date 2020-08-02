@@ -1,2 +1,3 @@
 run_id, feat_name, feat_name_long, feat_type, model_params, metric_name, metric_val
-3,rooling_demand,Mean of the price estimates.lag_features,,rmse,1.00693
+3,rooling_demand,Mean of the variable estimates,lag_features,,rmse,1.16548
+3,rooling_price,Mean of the price estimates,lag_features,,rmse,1.00693
