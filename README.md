@@ -34,3 +34,9 @@ Cesium
 http://cesium-ml.org/docs/feature_table.html
 
 
+Feature Tools for advacned fewatures
+`https://github.com/Featuretools/predict-remaining-useful-life/blob/master/Advanced%20Featuretools%20RUL.ipynb
+
+
+
+
