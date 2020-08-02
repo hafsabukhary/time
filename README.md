@@ -1,5 +1,6 @@
 # time
 
+Goal is to create feature enginerrring functions for M5 datasets.
 
 
 
@@ -17,8 +18,19 @@ https://www.kaggle.com/notebooks?sortBy=relevance&group=everyone&search=lightgbm
 
 
 
-Goal is to create feature functions for M5 datasets.
+Packages to use :
+
+ tsfresh
+
+tsfel   https://tsfel.readthedocs.io/en/latest/
+
+sktime
 
 
+feature tools :
+https://docs.featuretools.com/en/stable/automated_feature_engineering/handling_time.html
+
+Cesium
+http://cesium-ml.org/docs/feature_table.html
 
 
