@@ -1099,3 +1099,13 @@ print("MSE test;{}".format(mean_squared_error(y_test, y_test_pred_lg)))
 
 print("R2 score train:{}".format(r2_score(y_train, y_train_pred_lg)))
 print("R2 score test:{}".format(r2_score(y_test, y_test_pred_lg)))
+run_id=list(range(300))
+df_metrics=pd.DataFrame(run_id,columns=['run_id'])
+df_metrics['feat_name'] = pd.Series(X_train.columns[0:300], index=dataframe.index) 
+df_metrics['feat_type']=df_metrics.feat_name
+df_metrics.replace({'feat_type': r'^lag_.*'}, {'feat_type': 'lag'}, regex=True,inplace=True)
+df_metrics.replace({'feat_type': r'^rolling.*'}, {'feat_type': 'rolling'}, regex=True,inplace=True)
+df_metrics['parameter'] = pd.Series(best_lg, index=dataframe.index) 
+df_metrics['metric_name'] ="MSE" 
+df_metrics['metric_val'] = pd.Series(pred_mse[:300], index=dataframe.index) 
+df_metrics.to_csv("run_eval.csv")
