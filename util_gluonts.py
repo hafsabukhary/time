@@ -72,7 +72,24 @@ def gluonts_dataset_check(TD, nline=3) :
   return dd
 
  
+"""
 
+from gluonts.distribution.neg_binomial import NegativeBinomialOutput 
+pars = { 'submission':   True,'single_pred_length':single_pred_length, 
+         'submission_pred_length':submission_pred_length,
+         'start_date':startdate ,'freq':freq,
+         
+         'distr_output' : NegativeBinomialOutput(),
+         'lr' : 1e-5,  "epoch" : 8,
+         'num_batches_per_epoch' : 10,  "batch_size" : 8,
+         'cardinality' : cardinalities,
+         "num_samples" : 4,
+         
+         "ii_series":  11,
+       }
+estimator, forecasts, tss, metrics_agg, item_metrics_item = model_eval(None, TD=TD,  pars=pars,
+                
+"""
 
 
 def model_eval(estimator=None, TD=None, cardinalities=None,
