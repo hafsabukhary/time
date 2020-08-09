@@ -1,3 +1,48 @@
+import os, sys
+import pandas as pd, numpy as np
+
+
+#############################################################################################
+##################### CREATE SYNTHETIC TIMESERIES############################################
+def create_timeseries1d(start_date = '1/1/2000' ,end_date = None ,periods = 1000, freq = 'D' ,weight = 1 , fun=None ):
+  
+    date_rng   = pd.date_range(start=start_date, end=end_date, freq='D',periods=periods)
+    df        = pd.DataFrame(date_rng, columns=['date'])
+    data      =[]
+    for index in range(0,len(df)):
+        data.append(fun(index))  
+    df['data']         = data
+    df['datetime']     = pd.to_datetime(df['date'])
+    df                = df.set_index('datetime')
+    df.drop(['date'], axis=1, inplace=True)
+    return df
+
+
+def create_timeseries_2d(start_date = '1/1/2000' ,end_date = None ,periods = 660, freq = 'D' ,weight = 1 , fun=None ):
+   pass
+   
+   
+   
+def create_timeseries_kd(start_date = '1/1/2000' ,end_date = None ,periods = 660, freq = 'D' ,weight = 1 , params=None ):
+    date_rng   = pd.date_range(start=start_date, end=end_date, freq='D',periods=periods)
+    df        = pd.DataFrame(date_rng, columns=['date'])
+    data      =[]
+    Ncols   = len(params)
+    for key in params:
+      data  = [] 
+      fun = params[key]
+      for index in range(0,len(df)):
+          data.append(fun(index))  
+      df[key]     = data
+    df['datetime']     = pd.to_datetime(df['date'])
+    df                = df.set_index('datetime')
+    df.drop(['date'], axis=1, inplace=True)
+    return df
+   ### k dumsnio
+
+    
+    
+    
 
 def model_eval(clf0, df, colX, coly="y", test_size=0.5, istrain=1, use_eval=0 ) :
   clf = copy.deepcopy(clf0)  
