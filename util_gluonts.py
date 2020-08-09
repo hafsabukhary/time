@@ -1,15 +1,10 @@
 # -*- coding: utf-8 -*-
-import os, sys
 from time import time
-import os, sys, copy,gc, random, json
+import os, sys, copy,gc, random, json, glob
 from collections import OrderedDict
 
 
-
-#####################################################################################
-#####################################################################################
 import numpy as np, pandas as pd
-
 import matplotlib.pyplot as plt
 from matplotlib.ticker import NullFormatter
 
@@ -36,25 +31,125 @@ from sklearn.metrics import (confusion_matrix,roc_curve, roc_auc_score, classifi
                              accuracy_score)
 
 
-
-try :
-  from catboost import CatBoostClassifier, Pool, cv
-  from imblearn.over_sampling import SMOTE, ADASYN  ####Imbalance
-  from imblearn.combine import SMOTETomek
-  from pylmnn import LargeMarginNearestNeighbor as LMNN
-  import seaborn as sns; sns.set()
-  import lightgbm as lgb
-
-except Exception as e:
-    print(e)
  
 ####################################################################################################
-dirsession = r"/session/"
-dirmodel   = r"/model/"
+def log(*s) :
+    print(*s, flush=True)
 
 
 
-#####################################################################################################
+####################################################################################################
+
+def generate_pivot_unit(df, keyref=None,  **kw) :
+    """item_id X Date  : Unit
+       generate__file(    )    
+    """
+    col_merge = [ "shop_id", "item_id"  ]
+
+    df['time_key'] = df['time_key'].astype("int32")                    
+    dfp            = df.pivot_table(values='units', index= col_merge  , 
+                             columns='time_key', aggfunc='sum').reset_index().fillna(0)    
+    
+    ########### Cols reference
+    colref  = [  "shop_id", "dept_id", "l1_genre_id", "l2_genre_id", 'item_id'   ]    
+    key_all = df[ colref].drop_duplicates(colref) 
+    del df ; gc.collect()
+        
+    ########### Cols   ##############################################################
+    dfp         = dfp.join( key_all.set_index(col_merge),  on= col_merge, how="left"   )
+    coldate     = [ x for x in dfp.columns if x not in colref ]
+    dfp         = dfp[ colref + coldate ]
+    dfp.columns = [ str(x) for x in dfp.columns ]
+    # dfp = dfp[dfp['l1_genre_id'] != -1 ] 
+    return dfp
+
+    
+    
+def generate_pivot_gluonts(path_input="/data/pos/", path_export=None, folder_list=None, cols=None,  
+                           prefix_col="", prefix_file="pivot-gluonts", shop_list=[16,17], verbose=1,  **kw) :
+    
+    def isint(t):
+        try : int(t)
+        except : return False
+        return True
+        
+    from offline.models.util_deepar import pandas_to_gluonts_multiseries, cols_remove
+    dfp2 = None
+    for ii, (date0) in enumerate(folder_list) :    
+        pos_dir  =  path_input + f"/{date0}"
+        log("Process", ii, pos_dir)
+        
+        dfpi    = pd_read_file2( pos_dir , n_pool=1)
+        log_pd( dfpi)
+        keys =['shop_id',  "l1_genre_id", "l2_genre_id", 'item_id', ]
+        dfp2 = dfp2.join( dfpi.set_index(keys), on=keys, how="outer", rsuffix="b" )  if dfp2 is not None else dfpi
+        log_pd( dfp2)
+        del dfpi; gc.collect()
+
+
+    #### df_date ###########################################################
+    date_list        = sorted([ int(t)  for t in dfp2.columns  if  isint(t)  ])
+    cols_timeseries  = [ t  for t in date_list   ]
+    dfdate           = pd.DataFrame({"time_key" : date_list})
+    dfdate['order_date'] = [ from_timekey(t)  for t in date_list]
+    log_pd( dfdate)
+    dfdate = generate_X_date(dfdate, keyref= 'time_key', coldate =  'order_date', prefix_col ="" )
+    log_pd( dfdate)
+    
+    
+    ### Split by shop #####################################################
+    for shop_id in shop_list :           
+        dfp  = dfp2[dfp2.shop_id == shop_id]
+        dfp  = dfp.reset_index(drop=True)
+        path = f"{path_export}/{prefix_file}_{shop_id}"
+
+    
+        # cols_timeseries =  cols_remove( dfp.columns , colref )  
+        df_timeseries = dfp[ cols_timeseries].fillna(0.0)
+        log_pd(df_timeseries)
+        pd_to_file(df_timeseries, f"{path}/df_timeseries.parquet", "none"  )
+        
+        cols_calendar   =  [ 'day', 'month',  'quarter', 'weekday', 'weekmonth',  'weekyeariso', 'isholiday' ]  
+        df_dynamic      = dfdate[ cols_calendar]
+        log_pd(df_dynamic)
+        pd_to_file(df_dynamic, f"{path}/df_dynamic.parquet", "none"  )
+    
+        cols_static   = [  "shop_id",  "l1_genre_id", "l2_genre_id", 'item_id'   ]   
+        df_static     = dfp[ cols_static]
+        pd_to_file(df_static, f"{path}/df_static.parquet", "none"  )
+        del dfp; gc.collect()
+        
+        submission = False
+        start_date             = str(dfdate.date.min())
+        pars_data              = {'submission'         : submission,
+                                  'single_pred_length' : 28,   'submission_pred_length': 2*28,
+                                  'n_timeseries': len(df_timeseries)   , 'start_date':  start_date,
+                                  'freq': "D"}
+        log(pars_data)
+        
+        ##### Generate the Gluonts format dataset
+        pandas_to_gluonts_multiseries(df_timeseries, df_dynamic, df_static,
+                                      pars = pars_data,
+                                      path_save= f"{path}/"  , return_df=False) 
+
+
+
+
+def tag_create(pars, sep=";")  :
+    s = [  str(k) + "-"+ str(v) for k,v in pars.items()   ]
+    s =  ";".join(s)
+    return s
+
+    
+def gluonts_get_cardinality(dataset_path="", TD=None):
+  if TD is None :   
+    cc = json.load(open( dataset_path + "/metadata.json", mode="r" ) )['cardinality']
+  else :
+    cc = [feat_static_cat.cardinality for feat_static_cat in TD.metadata.feat_static_cat ]
+  return cc     
+      
+
+
 def gluonts_dataset_check(TD, nline=3) :
   path  = TD.train.path
   flist = glob.glob( path + "/*.json")
@@ -70,26 +165,6 @@ def gluonts_dataset_check(TD, nline=3) :
   #return sw     
   dd = json.loads(sw)       
   return dd
-
- 
-"""
-
-from gluonts.distribution.neg_binomial import NegativeBinomialOutput 
-pars = { 'submission':   True,'single_pred_length':single_pred_length, 
-         'submission_pred_length':submission_pred_length,
-         'start_date':startdate ,'freq':freq,
-         
-         'distr_output' : NegativeBinomialOutput(),
-         'lr' : 1e-5,  "epoch" : 8,
-         'num_batches_per_epoch' : 10,  "batch_size" : 8,
-         'cardinality' : cardinalities,
-         "num_samples" : 4,
-         
-         "ii_series":  11,
-       }
-estimator, forecasts, tss, metrics_agg, item_metrics_item = model_eval(None, TD=TD,  pars=pars,
-                
-"""
 
 
 def model_eval(estimator=None, TD=None, cardinalities=None,
@@ -134,14 +209,46 @@ def model_eval(estimator=None, TD=None, cardinalities=None,
 
 
 
+def model_eval_all(dataset_name, estimator):
+    dataset = get_dataset(dataset_name)
+    estimator = estimator(
+        prediction_length=dataset.metadata.prediction_length,
+        freq=dataset.metadata.freq,
+        use_feat_static_cat=True,
+        cardinality=[
+            feat_static_cat.cardinality
+            for feat_static_cat in dataset.metadata.feat_static_cat
+        ],
+    )
 
-def forecast_metrics(tss, forecasts, TD,quantiles=[0.1, 0.5, 0.9], show=True, dir_save=None) :
+    log(f"evaluating {estimator} on {dataset}")
+
+    predictor = estimator.train(dataset.train)
+
+    forecast_it, ts_it = make_evaluation_predictions(
+        dataset.test, predictor=predictor, num_samples=100
+    )
+
+    agg_metrics, item_metrics = Evaluator()(
+        ts_it, forecast_it, num_series=len(dataset.test)
+    )
+
+    pprint.plog(agg_metrics)
+
+    eval_dict = agg_metrics
+    eval_dict["dataset"] = dataset_name
+    eval_dict["estimator"] = type(estimator).__name__
+    return eval_dict
+
+
+def forecast_metrics(tss, forecasts, quantiles=[0.1, 0.5, 0.9], show=True, dir_save=None) :
     from gluonts.evaluation import Evaluator
     evaluator = Evaluator(quantiles=quantiles)
-    agg_metrics, item_metrics = evaluator(iter(tss), iter(forecasts), num_series=len(TD.test) )
+    agg_metrics, item_metrics = evaluator(iter(tss), iter(forecasts), num_series=len(forecasts ))
+
     if show :  log(json.dumps(agg_metrics, indent=4))        
     if dir_save :
-      json.dumps(agg_metrics, indent=4)
+      json.dump(agg_metrics, indent=4)
       
     return agg_metrics, item_metrics
 
@@ -485,7 +592,6 @@ test_cal_features_list = [test_cal_features] * len(sales_train_validation)
 train_cal_features_list = [train_cal_features] * len(sales_train_validation)
 
 """
-
 
 
 
