@@ -1,5 +1,22 @@
 
+"""
 
+Packages to use :
+
+tsfresh
+
+tsfel https://tsfel.readthedocs.io/en/latest/
+
+sktime
+
+feature tools : https://docs.featuretools.com/en/stable/automated_feature_engineering/handling_time.html
+
+Cesium http://cesium-ml.org/docs/feature_table.html
+
+Feature Tools for advacned fewatures `https://github.com/Featuretools/predict-remaining-useful-life/blob/master/Advanced%20Featuretools%20RUL.ipynb
+
+
+"""
 
 import pandas as pd
 import tsfresh
