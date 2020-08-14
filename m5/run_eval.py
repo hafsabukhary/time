@@ -2,82 +2,107 @@
 
 import util_feat_m5
 
+from sklearn import preprocessing
+import lightgbm as lgb
+import pandas as pd
 
 
 # df_meta=   col_name, col_type, file_path
 
+def transform_categorical_features(df):
+	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	for feature in nan_features:
+		df[feature].fillna('unknown', inplace = True)
 
+	encoder = preprocessing.LabelEncoder()
+	df['id_encode'] = encoder.fit_transform(df['id'].astype(str))
+	
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	for feature in categorical_cols:
+		encoder = preprocessing.LabelEncoder()
+		df[feature] = encoder.fit_transform(df[feature].astype(str))
 
-def features_generate_file(dir_in, dir_out, my_fun_features) :
-	"""
-    from util_feat_m5  import lag_featrues
-    features_generate_file(dir_in, dir_out, lag_featrues) 
-	"""
-	train_df = pd.read_csv( dir_in  + "/sales_train_validation.csv.zip")
-	calendar_df = pd.read_csv(dir_in  + "/calendar.csv")
-	price_df = pd.read_csv(dir_in  + "/sell_prices.csv") 
-
-
-	dfnew = my_fun_features(train_df, calendar_df, price_df) :
-
-    dfnew.to_parquet( dir_out +"/mfeaturesXXXX.parquet")
-
-
-
- def features_get_cols(mode="random") :
-    cols_cat0 = [  "feat1", "fewat2" ]
-
-    if mode == "random" :
-		### Random selection
-	    cols_cat = cols_cat0[ np.random.c = hoice( 5, len(cols_cat)  ) ]
-	    cols_num = cols_num0[ np.random.c = hoice( 5, len(cols_num)  ) ]
-        return cols_cat, col_num
-
-    if mode == "all" :
-      pass    
-   
-    if mode == "smartway" :
-       pass
+	return df
 
 
 
-def run_eval(model, pars={} ) :
-  
-    data_pars = {}
-    model_pars = {}
-
-    for ii in range(n_experiments) :
-		cols_cat, cols_num = features_get_cols()
-        
-        df     = load_data(path, cols_cat + cols_num, "train")
-        dftest = load_data(path, cols_cat + cols_num, 'test')
-
-		X_train = X_transform( df, cols_num, cols_cat, pars) # select sri
-		y_train  = y_transform(df, coly) 
-
-		X_test = X_transform( dftest, cols_num, cols_cat, pars) # select variables   
-		y_test  = y_transform(dftest, coly) 
+def add_time_features(df):
+	df['date'] = pd.to_datetime(df['date'])
+	df['year'] = df['date'].dt.year
+	df['month'] = df['date'].dt.month
+	df['week'] = df['date'].dt.week
+	df['day'] = df['date'].dt.day
+	df['dayofweek'] = df['date'].dt.dayofweek
+	return df
 
 
 
-		lgbm = lgb.LGBMRegressor()
-        lgbm.fit( X_train, y_train)
+def prepare_train_test_data(max_rows):
+	df_sales_train = pd.read_csv("sales_train_evaluation.csv/sales_train_evaluation.csv")
+	df_calendar = pd.read_csv("calendar.csv")
+	df_sales_validation = pd.read_csv("sales_train_validation.csv/sales_train_validation.csv")
+	df_sell_price = pd.read_csv("sell_prices.csv/sell_prices.csv")
+	df_submission = pd.read_csv("sample_submission.csv/sample_submission.csv")
 
-		# prediction + metrics
-		y_test_pred = lgbm.predict(X_test)
-        metric_val = metrics_calc(y_test, y_test_pred)
+	df_sales_validation_melt = pd.melt(df_sales_validation[0:max_rows], id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+	validation_rows = [row for row in df_submission['id'] if 'validation' in row]
+	evaluation_rows = [row for row in df_submission['id'] if 'evaluation' in row]
+	df_submission_validation = df_submission[df_submission['id'].isin(validation_rows)][0:max_rows]
+	df_submission_evaluation = df_submission[df_submission['id'].isin(evaluation_rows)][0:max_rows]
+	
+	df_product = df_sales_validation[['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']][1:1000].drop_duplicates()
+    
+	df_submission_validation = df_submission_validation.merge(df_product, how = 'left', on = 'id')
+	df_submission_evaluation = df_submission_evaluation.merge(df_product, how = 'left', on = 'id')
+
+	df_submission_validation = pd.melt(df_submission_validation, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+	df_submission_evaluation = pd.melt(df_submission_evaluation, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+    
+	df_sales_validation_melt['part'] = 'train'
+	df_submission_validation['part'] = 'test1'
+	df_submission_evaluation['part'] = 'test2'
+    
+	merged_df = pd.concat([df_sales_validation_melt, df_submission_validation, df_submission_evaluation], axis = 0)
+	df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
+	merged_df = pd.merge(merged_df, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
+	merged_df = merged_df.merge(df_sell_price, on = ['store_id', 'item_id', 'wm_yr_wk'], how = 'left')
+
+	merged_df = transform_categorical_features(merged_df)
+	merged_df = add_time_features(merged_df)
+
+	X_train = merged_df[merged_df['part'] == 'train'].sort_values('date')
+	Y_train = X_train.sort_values('date')['demand']
+	X_train = X_train.drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
+
+	X_test = merged_df[merged_df['part'] != 'train'].sort_values('date').drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
+
+	return X_train, Y_train, X_test
 
 
-	    ### Store in metrics :
-	    """
-	    # run_id, feat_name, feat_name_long, feat_type, model_params, metric_name, metric_val 
-	    # 3,roling_demand,Mean of the variable estimates,lag_features,params = {"objective" : "poisson","metric" :"rmse","force_row_wise" : True,"learning_rate" : 0.075,
-	"sub_row" : 0.75,"bagging_freq" : 1,"lambda_l2" : 0.1,"metric": ["rmse"],'verbosity': 1,'num_iterations' : 250,
-	},rmse,1.16548
-	    """
-	    df_metrics['run_id'] = time()
-	    df_metrics['cols'].append(  ",".join( cols_num + cols_cat ))
-	    df_metrics['metrics_val'].append(metric_val)
+
+def run_eval(max_rows = None):
+	model_params = {'num_leaves': 400,
+          'min_child_weight': 0.02,
+          'feature_fraction': 0.32,
+          'bagging_fraction': 0.4,
+          'min_data_in_leaf': 100,
+          'objective': 'regression',
+          'max_depth': -1,
+          'learning_rate': 0.005,
+          "boosting_type": "gbdt",
+          "bagging_seed": 11,
+          "metric": 'rmse',
+          "verbosity": -1,
+          'reg_alpha': 0.35,
+          'reg_lambda': 0.65,
+          'random_state': 22,
+         }
+	X_train, Y_train, X_test = prepare_train_test_data(max_rows)
+	print("Data merged and ready")
+	lgb_dtrain = lgb.Dataset(X_train, label=Y_train)
+	clf = lgb.train(model_params, lgb_dtrain, 100,early_stopping_rounds = 50)
+	Y_test = clf.predict(X_test)
+
 
 
 
