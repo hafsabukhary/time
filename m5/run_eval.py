@@ -9,6 +9,38 @@ import pandas as pd
 
 # df_meta=   col_name, col_type, file_path
 
+# def features_generate_file(dir_in, dir_out, my_fun_features):
+# 	"""
+#     from util_feat_m5  import lag_featrues
+#     features_generate_file(dir_in, dir_out, lag_featrues) 
+# 	"""
+# 	train_df = pd.read_csv( dir_in  + "/sales_train_validation.csv.zip")
+# 	calendar_df = pd.read_csv(dir_in  + "/calendar.csv")
+# 	price_df = pd.read_csv(dir_in  + "/sell_prices.csv") 
+
+
+# 	dfnew = my_fun_features(train_df, calendar_df, price_df)
+
+#     dfnew.to_parquet( dir_out +"/mfeaturesXXXX.parquet")
+
+
+
+#  def features_get_cols(mode="random"):
+#     cols_cat0 = [  "feat1", "fewat2" ]
+
+#     if mode == "random" :
+# 		### Random selection
+# 	    cols_cat = cols_cat0[ np.random.c = hoice( 5, len(cols_cat)  ) ]
+# 	    cols_num = cols_num0[ np.random.c = hoice( 5, len(cols_num)  ) ]
+#         return cols_cat, col_num
+
+#     if mode == "all" :
+#       pass    
+   
+#     if mode == "smartway" :
+#        pass
+
+
 def transform_categorical_features(df):
 	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
 	for feature in nan_features:
