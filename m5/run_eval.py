@@ -41,6 +41,24 @@ import pandas as pd
 #        pass
 
 
+def get_parquet_file_name(feature_set_name):
+	return f'features_{feature_set_name}.parquet'
+
+
+def create_and_save_features(raw_df, feature_set_name):
+	df_feature = pd.DataFrame()
+	if feature_set_name == "set1":
+		df_feature = create_set1_features()
+	elif feature_set_name == "set2":
+		df_feature = create_set2_features()
+	df_feature.to_parquet(get_parquet_file_name(feature_set_name))
+	return df_feature
+
+
+def load_features(feature_set_name):
+	return pd.read_parquet(get_parquet_file_name(feature_set_name))
+
+
 def transform_categorical_features(df):
 	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
 	for feature in nan_features:
