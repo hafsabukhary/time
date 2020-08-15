@@ -171,6 +171,41 @@ def run_eval(max_rows = None):
 		Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
 
 
+		
+# def run_eval(model, pars={} ):
+  
+#     data_pars = {}
+#     model_pars = {}
+
+#     for ii in range(n_experiments) :        
+#         df     = load_data(path, cols_cat + cols_num, "train")
+#         dftest = load_data(path, cols_cat + cols_num, 'test')
+
+# 		X_train = X_transform( df, cols_num, cols_cat, pars) # select sri
+# 		y_train  = y_transform(df, coly) 
+
+# 		X_test = X_transform( dftest, cols_num, cols_cat, pars) # select variables   
+# 		y_test  = y_transform(dftest, coly) 
+
+
+# 		lgbm = lgb.LGBMRegressor()
+#         lgbm.fit( X_train, y_train)
+
+# 		# prediction + metrics
+# 		y_test_pred = lgbm.predict(X_test)
+#         metric_val = metrics_calc(y_test, y_test_pred)
+
+
+# 	    ### Store in metrics :
+# 	    """
+# 	    # run_id, feat_name, feat_name_long, feat_type, model_params, metric_name, metric_val 
+# 	    # 3,roling_demand,Mean of the variable estimates,lag_features,params = {"objective" : "poisson","metric" :"rmse","force_row_wise" : True,"learning_rate" : 0.075,
+# 	"sub_row" : 0.75,"bagging_freq" : 1,"lambda_l2" : 0.1,"metric": ["rmse"],'verbosity': 1,'num_iterations' : 250,
+# 	},rmse,1.16548
+# 	    """
+# 	    df_metrics['run_id'] = time()
+# 	    df_metrics['cols'].append(  ",".join( cols_num + cols_cat ))
+# 	    df_metrics['metrics_val'].append(metric_val)
 
 
 
