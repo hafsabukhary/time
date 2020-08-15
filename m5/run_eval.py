@@ -324,3 +324,7 @@ def test_old():
 	df_metrics['metric_name'] ="MSE" 
 	df_metrics['metric_val'] = pd.Series(pred_mse[:300], index=dataframe.index) 
 	df_metrics.to_csv("run_eval.csv")
+
+	
+if __name__ == "__main__":
+	run_eval(100)
