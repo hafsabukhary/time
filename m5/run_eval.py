@@ -131,9 +131,27 @@ def run_eval(max_rows = None):
          }
 	X_train, Y_train, X_test = prepare_train_test_data(max_rows)
 	print("Data merged and ready")
-	lgb_dtrain = lgb.Dataset(X_train, label=Y_train)
-	clf = lgb.train(model_params, lgb_dtrain, 100,early_stopping_rounds = 50)
-	Y_test = clf.predict(X_test)
+	
+	# preparing split
+	n_fold = 3
+	folds = TimeSeriesSplit(n_splits=n_fold)
+	splits = folds.split(X_train, Y_train)
+
+	Y_test = np.zeros(X_test.shape[0])
+
+	for fold_n, (train_index, valid_index) in enumerate(splits):
+		print('Fold:',fold_n+1)
+		X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+		Y_train_fold, Y_valid_fold = Y_train.iloc[train_index], Y_train.iloc[valid_index]
+		dtrain = lgb.Dataset(X_train_fold, label=Y_train_fold)
+		dvalid = lgb.Dataset(X_valid_fold, label=Y_valid_fold)
+		clf = lgb.train(model_params, dtrain, 2500, valid_sets = [dtrain, dvalid],early_stopping_rounds = 50, verbose_eval=100)
+		Y_valid_fold_pred = clf.predict(X_valid_fold,num_iteration=clf.best_iteration)
+		val_score = np.sqrt(metrics.mean_squared_error(Y_valid_fold_pred, Y_valid_fold))
+		print(f'val rmse score is {val_score}')
+
+		Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
+
 
 
 
