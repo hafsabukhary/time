@@ -1,13 +1,17 @@
 
 
-import util_feat_m5
+# import util_feat_m5
 
-from sklearn import preprocessing
+from sklearn import preprocessing, metrics
 import lightgbm as lgb
 import pandas as pd
-
+import numpy as np
+from sklearn.model_selection import StratifiedKFold, KFold, RepeatedKFold, GroupKFold, GridSearchCV, train_test_split, TimeSeriesSplit
+from datetime import datetime
 
 # df_meta=   col_name, col_type, file_path
+
+
 
 # def features_generate_file(dir_in, dir_out, my_fun_features):
 # 	"""
@@ -41,6 +45,22 @@ import pandas as pd
 #        pass
 
 
+def transform_categorical_features(df):
+	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	for feature in nan_features:
+		df[feature].fillna('unknown', inplace = True)
+
+	encoder = preprocessing.LabelEncoder()
+	df['id_encode'] = encoder.fit_transform(df['id'].astype(str))
+	
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	for feature in categorical_cols:
+		encoder = preprocessing.LabelEncoder()
+		df[feature] = encoder.fit_transform(df[feature].astype(str))
+
+	return df
+
+
 def get_parquet_file_name(feature_set_name):
 	return f'features_{feature_set_name}.parquet'
 
@@ -59,23 +79,6 @@ def load_features(feature_set_name):
 	return pd.read_parquet(get_parquet_file_name(feature_set_name))
 
 
-def transform_categorical_features(df):
-	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
-	for feature in nan_features:
-		df[feature].fillna('unknown', inplace = True)
-
-	encoder = preprocessing.LabelEncoder()
-	df['id_encode'] = encoder.fit_transform(df['id'].astype(str))
-	
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
-	for feature in categorical_cols:
-		encoder = preprocessing.LabelEncoder()
-		df[feature] = encoder.fit_transform(df[feature].astype(str))
-
-	return df
-
-
-
 def add_time_features(df):
 	df['date'] = pd.to_datetime(df['date'])
 	df['year'] = df['date'].dt.year
@@ -84,7 +87,6 @@ def add_time_features(df):
 	df['day'] = df['date'].dt.day
 	df['dayofweek'] = df['date'].dt.dayofweek
 	return df
-
 
 
 def prepare_train_test_data(max_rows):
@@ -131,11 +133,11 @@ def prepare_train_test_data(max_rows):
 
 
 def run_eval(max_rows = None):
-	model_params = {'num_leaves': 400,
-          'min_child_weight': 0.02,
-          'feature_fraction': 0.32,
-          'bagging_fraction': 0.4,
-          'min_data_in_leaf': 100,
+	model_params = {'num_leaves': 555,
+          'min_child_weight': 0.034,
+          'feature_fraction': 0.379,
+          'bagging_fraction': 0.418,
+          'min_data_in_leaf': 106,
           'objective': 'regression',
           'max_depth': -1,
           'learning_rate': 0.005,
@@ -143,19 +145,21 @@ def run_eval(max_rows = None):
           "bagging_seed": 11,
           "metric": 'rmse',
           "verbosity": -1,
-          'reg_alpha': 0.35,
-          'reg_lambda': 0.65,
-          'random_state': 22,
+          'reg_alpha': 0.3899,
+          'reg_lambda': 0.648,
+          'random_state': 222,
          }
 	X_train, Y_train, X_test = prepare_train_test_data(max_rows)
 	print("Data merged and ready")
-	
+
 	# preparing split
 	n_fold = 3
 	folds = TimeSeriesSplit(n_splits=n_fold)
 	splits = folds.split(X_train, Y_train)
 
 	Y_test = np.zeros(X_test.shape[0])
+
+	dict_metrics = {'run_id' : [], 'cols' : [], 'metrics_val' : []}
 
 	for fold_n, (train_index, valid_index) in enumerate(splits):
 		print('Fold:',fold_n+1)
@@ -170,8 +174,19 @@ def run_eval(max_rows = None):
 
 		Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
 
+		dict_metrics['run_id'].append(datetime.now())
+		dict_metrics['cols'].append(X_train.columns.tolist())
+		dict_metrics['metrics_val'].append(val_score)
 
-		
+	df_metrics = pd.DataFrame.from_dict(dict_metrics)
+	print("****************************")
+	print("        DF metrics          ")
+	print("****************************")
+	print(df_metrics)
+
+
+
+
 # def run_eval(model, pars={} ):
   
 #     data_pars = {}
@@ -325,6 +340,5 @@ def test_old():
 	df_metrics['metric_val'] = pd.Series(pred_mse[:300], index=dataframe.index) 
 	df_metrics.to_csv("run_eval.csv")
 
-	
 if __name__ == "__main__":
 	run_eval(100)
