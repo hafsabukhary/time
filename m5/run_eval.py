@@ -253,14 +253,6 @@ def create_and_save_features(max_rows, feature_set_names):
 		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
 
 
-def load_features(feature_set_name, max_rows):
-	merged_df = pd.read_parquet(get_parquet_file_name(feature_set_name, max_rows))
-	X_train = merged_df[merged_df['part'] == 'train'].sort_values('date')
-	Y_train = X_train.sort_values('date')['demand']
-	X_train = X_train.drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
-	X_test = merged_df[merged_df['part'] != 'train'].sort_values('date').drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
-	return X_train, Y_train, X_test
-
 
 def load_features(mode = "random"):
 	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
