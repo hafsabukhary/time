@@ -95,6 +95,27 @@ def load_features(feature_set_name, max_rows):
 	return X_train, Y_train, X_test
 
 
+def load_features_randomly(max_rows):
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
+	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
+	compulsory_cols = ['part', 'id', 'demand', 'd', 'date', 'day']
+	print(np.random.choice( 5, len(categorical_cols)))
+	cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 5, replace = False)]
+	cols_num = [numerical_cols[i] for i in np.random.choice(len(numerical_cols), 5, replace = False) ]
+
+	selected_cols = compulsory_cols + cols_cat + cols_num
+
+	merged_df = pd.read_parquet('features_set1_100.parquet', columns = selected_cols)
+
+	X_train = merged_df[merged_df['part'] == 'train'].sort_values('date')
+	Y_train = X_train.sort_values('date')['demand']
+	X_train = X_train.drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
+	X_test = merged_df[merged_df['part'] != 'train'].sort_values('date').drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
+	return X_train, Y_train, X_test
+
+
+
+
 def add_time_features(df):
 	df['date'] = pd.to_datetime(df['date'])
 	df['year'] = df['date'].dt.year
@@ -142,7 +163,7 @@ def prepare_raw_merged_df(max_rows):
 
 
 
-def run_eval(max_rows = None, feature_set_names = []):
+def run_eval(max_rows = None, num_exps = 3):
 	model_params = {'num_leaves': 555,
           'min_child_weight': 0.034,
           'feature_fraction': 0.379,
@@ -162,9 +183,9 @@ def run_eval(max_rows = None, feature_set_names = []):
 
 	dict_metrics = {'run_id' : [], 'cols' : [], 'metrics_val' : []}
 
-	for feature_set_name in feature_set_names:
-		X_train, Y_train, X_test = load_features(feature_set_name, max_rows)
-		print(f'Data loaded: {feature_set_name}_{max_rows}')
+	for exp_num in range(num_exps):
+		X_train, Y_train, X_test = load_features_randomly(max_rows)
+		print('Features loaded randomly')
 
 		# preparing split
 		n_fold = 3
@@ -187,16 +208,15 @@ def run_eval(max_rows = None, feature_set_names = []):
 			Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
 
 			dict_metrics['run_id'].append(datetime.now())
-			dict_metrics['feature_name'] = f'{feature_set_name}_{max_rows}_fold{fold_n}'
 			dict_metrics['cols'].append(X_train.columns.tolist())
 			dict_metrics['metrics_val'].append(val_score)
 
-		df_metrics = pd.DataFrame.from_dict(dict_metrics)
-		print("****************************")
-		print("        DF metrics          ")
-		print("****************************")
-		print(df_metrics)
-		df_metrics.to_csv("df_metrics.csv")
+	df_metrics = pd.DataFrame.from_dict(dict_metrics)
+	print("****************************")
+	print("        DF metrics          ")
+	print("****************************")
+	print(df_metrics)
+	df_metrics.to_csv("df_metrics.csv")
 
 
 
@@ -355,5 +375,5 @@ def test_old():
 	df_metrics.to_csv("run_eval.csv")
 
 if __name__ == "__main__":
-	create_and_save_features(100, ["set1", "set2"])
-	run_eval(100, ["set1", "set2"])
+	# create_and_save_features(100, ["set1", "set2"])
+	run_eval(100)
