@@ -61,22 +61,38 @@ def transform_categorical_features(df):
 	return df
 
 
-def get_parquet_file_name(feature_set_name):
-	return f'features_{feature_set_name}.parquet'
+def get_parquet_file_name(feature_set_name, max_rows):
+	return f'features_{feature_set_name}_{max_rows}.parquet'
 
 
-def create_and_save_features(raw_df, feature_set_name):
-	df_feature = pd.DataFrame()
-	if feature_set_name == "set1":
-		df_feature = create_set1_features()
-	elif feature_set_name == "set2":
-		df_feature = create_set2_features()
-	df_feature.to_parquet(get_parquet_file_name(feature_set_name))
-	return df_feature
+def create_set1_features(merged_df):
+	return merged_df
 
 
-def load_features(feature_set_name):
-	return pd.read_parquet(get_parquet_file_name(feature_set_name))
+def create_set2_features(merged_df):
+	merged_df['lag_price_t1'] = merged_df.groupby(['id'])['sell_price'].transform(lambda x: x.shift(1))
+	return merged_df
+
+
+def create_and_save_features(max_rows, feature_set_names):
+	for feature_set_name in feature_set_names:
+		df_feature = pd.DataFrame()
+		merged_df = prepare_raw_merged_df(max_rows)
+		if feature_set_name == "set1":
+			df_feature = create_set1_features(merged_df)
+		elif feature_set_name == "set2":
+			df_feature = create_set2_features(merged_df)
+		df_feature.to_parquet(get_parquet_file_name(feature_set_name, max_rows))
+		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
+
+
+def load_features(feature_set_name, max_rows):
+	merged_df = pd.read_parquet(get_parquet_file_name(feature_set_name, max_rows))
+	X_train = merged_df[merged_df['part'] == 'train'].sort_values('date')
+	Y_train = X_train.sort_values('date')['demand']
+	X_train = X_train.drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
+	X_test = merged_df[merged_df['part'] != 'train'].sort_values('date').drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
+	return X_train, Y_train, X_test
 
 
 def add_time_features(df):
@@ -89,7 +105,7 @@ def add_time_features(df):
 	return df
 
 
-def prepare_train_test_data(max_rows):
+def prepare_raw_merged_df(max_rows):
 	df_sales_train = pd.read_csv("sales_train_evaluation.csv/sales_train_evaluation.csv")
 	df_calendar = pd.read_csv("calendar.csv")
 	df_sales_validation = pd.read_csv("sales_train_validation.csv/sales_train_validation.csv")
@@ -122,17 +138,11 @@ def prepare_train_test_data(max_rows):
 	merged_df = transform_categorical_features(merged_df)
 	merged_df = add_time_features(merged_df)
 
-	X_train = merged_df[merged_df['part'] == 'train'].sort_values('date')
-	Y_train = X_train.sort_values('date')['demand']
-	X_train = X_train.drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
-
-	X_test = merged_df[merged_df['part'] != 'train'].sort_values('date').drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
-
-	return X_train, Y_train, X_test
+	return merged_df
 
 
 
-def run_eval(max_rows = None):
+def run_eval(max_rows = None, feature_set_names = []):
 	model_params = {'num_leaves': 555,
           'min_child_weight': 0.034,
           'feature_fraction': 0.379,
@@ -149,40 +159,44 @@ def run_eval(max_rows = None):
           'reg_lambda': 0.648,
           'random_state': 222,
          }
-	X_train, Y_train, X_test = prepare_train_test_data(max_rows)
-	print("Data merged and ready")
-
-	# preparing split
-	n_fold = 3
-	folds = TimeSeriesSplit(n_splits=n_fold)
-	splits = folds.split(X_train, Y_train)
-
-	Y_test = np.zeros(X_test.shape[0])
 
 	dict_metrics = {'run_id' : [], 'cols' : [], 'metrics_val' : []}
 
-	for fold_n, (train_index, valid_index) in enumerate(splits):
-		print('Fold:',fold_n+1)
-		X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
-		Y_train_fold, Y_valid_fold = Y_train.iloc[train_index], Y_train.iloc[valid_index]
-		dtrain = lgb.Dataset(X_train_fold, label=Y_train_fold)
-		dvalid = lgb.Dataset(X_valid_fold, label=Y_valid_fold)
-		clf = lgb.train(model_params, dtrain, 2500, valid_sets = [dtrain, dvalid],early_stopping_rounds = 50, verbose_eval=100)
-		Y_valid_fold_pred = clf.predict(X_valid_fold,num_iteration=clf.best_iteration)
-		val_score = np.sqrt(metrics.mean_squared_error(Y_valid_fold_pred, Y_valid_fold))
-		print(f'val rmse score is {val_score}')
+	for feature_set_name in feature_set_names:
+		X_train, Y_train, X_test = load_features(feature_set_name, max_rows)
+		print(f'Data loaded: {feature_set_name}_{max_rows}')
 
-		Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
+		# preparing split
+		n_fold = 3
+		folds = TimeSeriesSplit(n_splits=n_fold)
+		splits = folds.split(X_train, Y_train)
 
-		dict_metrics['run_id'].append(datetime.now())
-		dict_metrics['cols'].append(X_train.columns.tolist())
-		dict_metrics['metrics_val'].append(val_score)
+		Y_test = np.zeros(X_test.shape[0])
 
-	df_metrics = pd.DataFrame.from_dict(dict_metrics)
-	print("****************************")
-	print("        DF metrics          ")
-	print("****************************")
-	print(df_metrics)
+		for fold_n, (train_index, valid_index) in enumerate(splits):
+			print('Fold:',fold_n+1)
+			X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+			Y_train_fold, Y_valid_fold = Y_train.iloc[train_index], Y_train.iloc[valid_index]
+			dtrain = lgb.Dataset(X_train_fold, label=Y_train_fold)
+			dvalid = lgb.Dataset(X_valid_fold, label=Y_valid_fold)
+			clf = lgb.train(model_params, dtrain, 2500, valid_sets = [dtrain, dvalid],early_stopping_rounds = 50, verbose_eval=100)
+			Y_valid_fold_pred = clf.predict(X_valid_fold,num_iteration=clf.best_iteration)
+			val_score = np.sqrt(metrics.mean_squared_error(Y_valid_fold_pred, Y_valid_fold))
+			print(f'val rmse score is {val_score}')
+
+			Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
+
+			dict_metrics['run_id'].append(datetime.now())
+			dict_metrics['feature_name'] = f'{feature_set_name}_{max_rows}_fold{fold_n}'
+			dict_metrics['cols'].append(X_train.columns.tolist())
+			dict_metrics['metrics_val'].append(val_score)
+
+		df_metrics = pd.DataFrame.from_dict(dict_metrics)
+		print("****************************")
+		print("        DF metrics          ")
+		print("****************************")
+		print(df_metrics)
+		df_metrics.to_csv("df_metrics.csv")
 
 
 
@@ -341,4 +355,5 @@ def test_old():
 	df_metrics.to_csv("run_eval.csv")
 
 if __name__ == "__main__":
-	run_eval(100)
+	create_and_save_features(100, ["set1", "set2"])
+	run_eval(100, ["set1", "set2"])
