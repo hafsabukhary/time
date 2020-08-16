@@ -216,9 +216,6 @@ def transform_categorical_features(df):
 	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
 	for feature in nan_features:
 		df[feature].fillna('unknown', inplace = True)
-
-	encoder = preprocessing.LabelEncoder()
-	df['id_encode'] = encoder.fit_transform(df['id'].astype(str))
 	
 	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
 	for feature in categorical_cols:
@@ -228,58 +225,22 @@ def transform_categorical_features(df):
 	return df
 
 
-def get_parquet_file_name(feature_set_name, max_rows):
-	return f'features_{feature_set_name}_{max_rows}.parquet'
-
-
-def create_set1_features(merged_df):
-	return merged_df
-
-
-def create_set2_features(merged_df):
-	merged_df['lag_price_t1'] = merged_df.groupby(['id'])['sell_price'].transform(lambda x: x.shift(1))
-	return merged_df
-
-
-def create_and_save_features(max_rows, feature_set_names):
-	for feature_set_name in feature_set_names:
-		df_feature = pd.DataFrame()
-		merged_df = prepare_raw_merged_df(max_rows)
-		if feature_set_name == "set1":
-			df_feature = create_set1_features(merged_df)
-		elif feature_set_name == "set2":
-			df_feature = create_set2_features(merged_df)
-		df_feature.to_parquet(get_parquet_file_name(feature_set_name, max_rows))
-		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
+# def get_parquet_file_name(feature_set_name, max_rows):
+# 	return f'features_{feature_set_name}_{max_rows}.parquet'
 
 
 
-def load_features(mode = "random"):
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
-	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
-	compulsory_cols = ['part', 'id', 'demand', 'd', 'date', 'day']
+# def create_and_save_features(max_rows, feature_set_names):
+# 	for feature_set_name in feature_set_names:
+# 		df_feature = pd.DataFrame()
+# 		merged_df = prepare_raw_merged_df(max_rows)
+# 		if feature_set_name == "set1":
+# 			df_feature = create_set1_features(merged_df)
+# 		elif feature_set_name == "set2":
+# 			df_feature = create_set2_features(merged_df)
+# 		df_feature.to_parquet(get_parquet_file_name(feature_set_name, max_rows))
+# 		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
 
-	selected_cols = compulsory_cols
-
-	if mode == "random":
-		cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 5, replace = False)]
-		cols_num = [numerical_cols[i] for i in np.random.choice(len(numerical_cols), 5, replace = False) ]
-		selected_cols = compulsory_cols + cols_cat + cols_num
-
-	if mode == "all":
-		selected_cols = compulsory_cols + categorical_cols + numerical_cols
-
-	if mode == "smartway":
-		selected_cols = compulsory_cols + categorical_cols + numerical_cols
-		# TODO: Need to update
-
-	merged_df = pd.read_parquet('features_set1_100.parquet', columns = selected_cols)
-
-	X_train = merged_df[merged_df['part'] == 'train'].sort_values('date')
-	Y_train = X_train.sort_values('date')['demand']
-	X_train = X_train.drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
-	X_test = merged_df[merged_df['part'] != 'train'].sort_values('date').drop(['part', 'demand', 'id', 'd', 'day', 'date'], axis =1)
-	return X_train, Y_train, X_test
 
 
 
@@ -330,8 +291,49 @@ def prepare_raw_merged_df(max_rows):
 	return merged_df
 
 
+def features_get_cols(mode = "random"):
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
+	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
 
-def run_eval(max_rows = None, num_exps = 3):
+	cols_cat = []
+	cols_num = []
+
+	if mode == "random":
+		cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 5, replace = False)]
+		cols_num = [numerical_cols[i] for i in np.random.choice(len(numerical_cols), 5, replace = False) ]
+
+	if mode == "all":
+		cols_cat = categorical_cols
+		cols_num = numerical_cols
+
+	if mode == "smartway":
+		cols_cat = categorical_cols
+		cols_num = numerical_cols
+		# TODO: Need to update
+
+	return cols_cat, cols_num
+
+
+
+def load_data(path, selected_cols, part):
+	selected_cols = ['demand', 'date', 'part'] + selected_cols
+
+	merged_df = pd.read_parquet(path, columns = selected_cols)
+	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
+	return merged_df.drop(['part'], axis=1)
+
+
+def X_transform(df, selected_cols):
+	X_df = df.drop(['demand', 'date'], axis =1)
+	return X_df
+
+
+def Y_transform(df, selected_col):
+	Y_df= df.sort_values('date')[selected_col]
+	return Y_df
+
+
+def run_eval(max_rows = None, n_experiments = 3):
 	model_params = {'num_leaves': 555,
           'min_child_weight': 0.034,
           'feature_fraction': 0.379,
@@ -349,11 +351,18 @@ def run_eval(max_rows = None, num_exps = 3):
           'random_state': 222,
          }
 
-	dict_metrics = {'run_id' : [], 'cols' : [], 'metrics_val' : []}
+	dict_metrics = {'run_id' : [], 'cols' : [], 'metric_name': [], 'model_params': [], 'metrics_val' : []}
 
-	for exp_num in range(num_exps):
-		X_train, Y_train, X_test = load_features()
+	for ii in range(n_experiments):
+		cols_cat, cols_num = features_get_cols()
+		df_train = load_data('features_set1_100.parquet', cols_cat + cols_num, 'train')
+		df_test = load_data('features_set1_100.parquet', cols_cat + cols_num, 'test1')
 		print('Features loaded')
+
+		X_train = X_transform(df_train, cols_cat + cols_num)
+		Y_train = Y_transform(df_train, 'demand')
+		X_test = X_transform(df_test, cols_cat + cols_num)
+		Y_test = Y_transform(df_test, 'demand')
 
 		# preparing split
 		n_fold = 3
@@ -376,7 +385,9 @@ def run_eval(max_rows = None, num_exps = 3):
 			Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
 
 			dict_metrics['run_id'].append(datetime.now())
-			dict_metrics['cols'].append(X_train.columns.tolist())
+			dict_metrics['cols'].append(";".join(X_train.columns.tolist()))
+			dict_metrics['model_params'].append(model_params)
+			dict_metrics['metric_name'].append('rmse')
 			dict_metrics['metrics_val'].append(val_score)
 
 	df_metrics = pd.DataFrame.from_dict(dict_metrics)
