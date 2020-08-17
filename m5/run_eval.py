@@ -329,7 +329,7 @@ def X_transform(df, selected_cols):
 
 
 def Y_transform(df, selected_col):
-	Y_df= df.sort_values('date')[selected_col]
+	Y_df= df[selected_col]
 	return Y_df
 
 
