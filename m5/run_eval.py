@@ -9,17 +9,7 @@ import copy
 
 ##### import all Feature engineering functions
 from util_feat_m5 import *
-
-
-def features_time_basic(dfraw, fname):
-	df = copy.deepcopy(dfraw)
-	df['date'] = pd.to_datetime(df['date'])
-	df['year'] = df['date'].dt.year
-	df['month'] = df['date'].dt.month
-	df['week'] = df['date'].dt.week
-	df['day'] = df['date'].dt.day
-	df['dayofweek'] = df['date'].dt.dayofweek	
-	df.to_parquet(fname)
+from util_feat_m5 import features_time_basic
 
 
 def features_to_category(df):
