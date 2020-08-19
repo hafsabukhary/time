@@ -23,7 +23,21 @@ import tsfresh
 
 
 
-def lag_featrues(df):
+
+def features_time_basic(dfraw, fname):
+	df = copy.deepcopy(dfraw)
+	df['date'] = pd.to_datetime(df['date'])
+	df['year'] = df['date'].dt.year
+	df['month'] = df['date'].dt.month
+	df['week'] = df['date'].dt.week
+	df['day'] = df['date'].dt.day
+	df['dayofweek'] = df['date'].dt.dayofweek	
+	df.to_parquet(fname)
+
+
+    
+    
+def features_lag(df, fname):
     out_df = df[['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']]
     ###############################################################################
     # day lag 29~57 day and last year's day lag 1~28 day 
@@ -186,7 +200,8 @@ def lag_featrues(df):
 
     out_df = pd.concat([out_df, df_cate_oh], axis=1)
 
-    return out_df
+    out_df.to_parquet(fname) 
+    # return out_df
   
   
   
