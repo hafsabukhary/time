@@ -5,11 +5,11 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold, KFold, RepeatedKFold, GroupKFold, GridSearchCV, train_test_split, TimeSeriesSplit
 from datetime import datetime
 import copy
+import os
 
 
 ##### import all Feature engineering functions
 from util_feat_m5 import *
-from util_feat_m5 import features_time_basic
 
 
 def features_to_category(df):
@@ -25,31 +25,53 @@ def features_to_category(df):
 	return df
 
 
-# def get_parquet_file_name(feature_set_name, max_rows):
-# 	return f'features_{feature_set_name}_{max_rows}.parquet'
+def update_meta_csv(featnames, filename):
+	meta_csv = pd.DataFrame(columns = ['featname', 'filename'])
+	if os.path.exists('meta_features.csv'):
+		meta_csv = pd.read_csv('meta_features.csv')
+	append_data_dict = {'featname' : [], 'filename' : []}
+	for feat in featnames:
+		if feat not in meta_csv['featname'].unique():
+			append_data_dict['filename'].append(filename)
+			append_data_dict['featname'].append(feat)
+		else:
+			meta_csv.loc[meta_csv['featname'] == feat, 'filename'] = filename
+	append_df = pd.DataFrame.from_dict(append_data_dict)
+	meta_csv = meta_csv.append(append_df)
+	meta_csv.to_csv('meta_features.csv', index = False)
 
-# def create_and_save_features(max_rows, feature_set_names):
-# 	for feature_set_name in feature_set_names:
-# 		df_feature = pd.DataFrame()
-# 		merged_df = raw_merged_df(max_rows)
-# 		if feature_set_name == "set1":
-# 			df_feature = create_set1_features(merged_df)
-# 		elif feature_set_name == "set2":
-# 			df_feature = create_set2_features(merged_df)
-# 		df_feature.to_parquet(get_parquet_file_name(feature_set_name, max_rows))
-# 		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
+
+
+def get_file_feat_from_meta_csv(selected_cols):
+	meta_csv = pd.read_csv('meta_features.csv')
+	file_feat_mapping = {k:[] for k in meta_csv['filename'].unique().tolist()}
+	for selected_col in selected_cols:
+		selected_col_meta_df = meta_csv[meta_csv["featname"] == selected_col]
+		file_feat_mapping[selected_col_meta_df['filename'].tolist()[0]].append(selected_col)
+	return file_feat_mapping
+
+
+def features_generate_file(dir_in, dir_out, my_fun_features, features_group_name) :
+	
+    # from util_feat_m5  import lag_featrues
+    # features_generate_file(dir_in, dir_out, lag_featrues) 
+	
+	merged_df = pd.read_parquet(dir_in + "/raw_merged.df.parquet")
+	dfnew = my_fun_features(merged_df)
+	dfnew.to_parquet(f'{dir_out}/{features_group_name}.parquet')
+	update_meta_csv(dfnew.columns, f'{features_group_name}.parquet')
 
 
 def feature_merge_df(file_list, cols_join):
-   dfall = None
-   for fi in file_list :
-	dfi        = pd.read_parquet(fi)	
-	cols_joini = [ t for r in cols_join if t in dfi.columns ]
-	dfall      = dfall.join(dfi.set_index(cols_joini), on = cols_joini, how="left") if dfall is not None else dfi
-   return dfall	
+	dfall = None
+	for fi in file_list :
+		dfi        = pd.read_parquet(fi)	
+		cols_joini = [ t for r in cols_join if t in dfi.columns ]
+		dfall      = dfall.join(dfi.set_index(cols_joini), on = cols_joini, how="left") if dfall is not None else dfi
+	return dfall	
 		
 	
-def raw_merged_df(fname='raw_merged.df.parquet', max_rows=10):
+def raw_merged_df(fname='raw_merged.df.parquet', max_rows=100):
 	df_sales_train            = pd.read_csv("data/sales_train_eval.csv")
 	df_calendar               = pd.read_csv("data/calendar.csv")
 	df_sales_val              = pd.read_csv("data/sales_train_val.csv")
@@ -82,14 +104,14 @@ def raw_merged_df(fname='raw_merged.df.parquet', max_rows=10):
 	merged_df = features_to_category(merged_df)
 	# merged_df = add_time_features(merged_df)
 
-    merged_df.to_parquet(fname)
+	merged_df.to_parquet(fname)
 	# return merged_df
 
 
 
 
 def features_get_cols(mode = "random"):
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' ]
 	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
 
 	cols_cat = []
@@ -115,12 +137,20 @@ def features_get_cols(mode = "random"):
 def load_data(path, selected_cols, part):
 	selected_cols = ['demand', 'date', 'part'] + selected_cols
 
-	merged_df = pd.read_parquet(path, columns = selected_cols)
+	file_col_mapping = get_file_feat_from_meta_csv(selected_cols)
+	# merged_df = pd.DataFrame()
+	# for file_name,file_cols in file_col_mapping.items():
+	# 	file_df = pd.read_parquet(path + file_name, columns = file_cols)
+	# 	merged_df = pd.concat([merged_df, file_df], axis = 0)
+
+	feature_dfs = [pd.read_parquet(f'{path}/{file_name}', columns = file_cols) for file_name,file_cols in file_col_mapping.items()]
+	merged_df = pd.concat(feature_dfs)
+
 	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
 	return merged_df.drop(['part'], axis=1)
 
 
-def X_transform(df, ):
+def X_transform(df, selected_cols):
 	X_df = df[  selected_cols  ]    #.drop(['demand', 'date'], axis =1)
 	return X_df
 
@@ -152,8 +182,8 @@ def run_eval(max_rows = None, n_experiments = 3):
 
 	for ii in range(n_experiments):
 		cols_cat, cols_num = features_get_cols()
-		df_train           = load_data('features_set1_100.parquet', cols_cat + cols_num, 'train')
-		df_test            = load_data('features_set1_100.parquet', cols_cat + cols_num, 'test1')
+		df_train           = load_data('data/output', cols_cat + cols_num, 'train')
+		df_test            = load_data('data/output', cols_cat + cols_num, 'test1')
 		print('Features loaded')
 
 		X_train            = X_transform(df_train, cols_cat + cols_num)
@@ -162,7 +192,7 @@ def run_eval(max_rows = None, n_experiments = 3):
 		# Y_test             = Y_transform(df_test, 'demand')
 
 		# preparing split
-		n_fold = 1
+		n_fold = 2
 		folds = TimeSeriesSplit(n_splits=n_fold)
 		splits = folds.split(X_train, Y_train)
 
@@ -200,7 +230,16 @@ def run_eval(max_rows = None, n_experiments = 3):
 
 if __name__ == "__main__":
 	# create_and_save_features(100, ["set1", "set2"])
-	run_eval(100)
+	#run_eval(100)
+
+	# To be run once
+	# raw_merged_df()
+
+	# Generating basic features
+	# features_generate_file(".", "data/output", identity_features, "identity")
+	# features_generate_file(".", "data/output", basic_time_features, "basic_time")
+
+	run_eval()
 	
 	
 	
