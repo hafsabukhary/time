@@ -203,7 +203,24 @@ def features_lag(df, fname):
     out_df.to_parquet(fname) 
     # return out_df
   
-  
+
+def basic_time_features(df):
+    df['date'] = pd.to_datetime(df['date'])
+    df['year'] = df['date'].dt.year
+    df['month'] = df['date'].dt.month
+    df['week'] = df['date'].dt.week
+    df['day'] = df['date'].dt.day
+    df['dayofweek'] = df['date'].dt.dayofweek
+    return df[['year', 'month', 'week', 'day', 'dayofweek']]
+
+
+def mean_features(df):
+    pass
+
+
+def identity_features(df):
+    return df
+
   
   
   
