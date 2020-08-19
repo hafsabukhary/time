@@ -1,12 +1,201 @@
-
-
-
 from sklearn import preprocessing, metrics
 import lightgbm as lgb
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, KFold, RepeatedKFold, GroupKFold, GridSearchCV, train_test_split, TimeSeriesSplit
 from datetime import datetime
+
+
+def transform_categorical_features(df):
+	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	for feature in nan_features:
+		df[feature].fillna('unknown', inplace = True)
+	
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	for feature in categorical_cols:
+		encoder = preprocessing.LabelEncoder()
+		df[feature] = encoder.fit_transform(df[feature].astype(str))
+
+	return df
+
+
+# def get_parquet_file_name(feature_set_name, max_rows):
+# 	return f'features_{feature_set_name}_{max_rows}.parquet'
+
+# def create_and_save_features(max_rows, feature_set_names):
+# 	for feature_set_name in feature_set_names:
+# 		df_feature = pd.DataFrame()
+# 		merged_df = prepare_raw_merged_df(max_rows)
+# 		if feature_set_name == "set1":
+# 			df_feature = create_set1_features(merged_df)
+# 		elif feature_set_name == "set2":
+# 			df_feature = create_set2_features(merged_df)
+# 		df_feature.to_parquet(get_parquet_file_name(feature_set_name, max_rows))
+# 		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
+
+
+
+
+def add_time_features(df):
+	df['date'] = pd.to_datetime(df['date'])
+	df['year'] = df['date'].dt.year
+	df['month'] = df['date'].dt.month
+	df['week'] = df['date'].dt.week
+	df['day'] = df['date'].dt.day
+	df['dayofweek'] = df['date'].dt.dayofweek
+	return df
+
+
+def prepare_raw_merged_df(max_rows):
+	df_sales_train = pd.read_csv("sales_train_evaluation.csv/sales_train_evaluation.csv")
+	df_calendar = pd.read_csv("calendar.csv")
+	df_sales_validation = pd.read_csv("sales_train_validation.csv/sales_train_validation.csv")
+	df_sell_price = pd.read_csv("sell_prices.csv/sell_prices.csv")
+	df_submission = pd.read_csv("sample_submission.csv/sample_submission.csv")
+
+	df_sales_validation_melt = pd.melt(df_sales_validation[0:max_rows], id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+	validation_rows = [row for row in df_submission['id'] if 'validation' in row]
+	evaluation_rows = [row for row in df_submission['id'] if 'evaluation' in row]
+	df_submission_validation = df_submission[df_submission['id'].isin(validation_rows)][0:max_rows]
+	df_submission_evaluation = df_submission[df_submission['id'].isin(evaluation_rows)][0:max_rows]
+	
+	df_product = df_sales_validation[['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']][1:1000].drop_duplicates()
+    
+	df_submission_validation = df_submission_validation.merge(df_product, how = 'left', on = 'id')
+	df_submission_evaluation = df_submission_evaluation.merge(df_product, how = 'left', on = 'id')
+
+	df_submission_validation = pd.melt(df_submission_validation, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+	df_submission_evaluation = pd.melt(df_submission_evaluation, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+    
+	df_sales_validation_melt['part'] = 'train'
+	df_submission_validation['part'] = 'test1'
+	df_submission_evaluation['part'] = 'test2'
+    
+	merged_df = pd.concat([df_sales_validation_melt, df_submission_validation, df_submission_evaluation], axis = 0)
+	df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
+	merged_df = pd.merge(merged_df, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
+	merged_df = merged_df.merge(df_sell_price, on = ['store_id', 'item_id', 'wm_yr_wk'], how = 'left')
+
+	merged_df = transform_categorical_features(merged_df)
+	merged_df = add_time_features(merged_df)
+
+	return merged_df
+
+
+def features_get_cols(mode = "random"):
+	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
+	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
+
+	cols_cat = []
+	cols_num = []
+
+	if mode == "random":
+		cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 5, replace = False)]
+		cols_num = [numerical_cols[i] for i in np.random.choice(len(numerical_cols), 5, replace = False) ]
+
+	if mode == "all":
+		cols_cat = categorical_cols
+		cols_num = numerical_cols
+
+	if mode == "smartway":
+		cols_cat = categorical_cols
+		cols_num = numerical_cols
+		# TODO: Need to update
+
+	return cols_cat, cols_num
+
+
+
+def load_data(path, selected_cols, part):
+	selected_cols = ['demand', 'date', 'part'] + selected_cols
+
+	merged_df = pd.read_parquet(path, columns = selected_cols)
+	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
+	return merged_df.drop(['part'], axis=1)
+
+
+def X_transform(df, selected_cols):
+	X_df = df.drop(['demand', 'date'], axis =1)
+	return X_df
+
+
+def Y_transform(df, selected_col):
+	Y_df= df[selected_col]
+	return Y_df
+
+
+def run_eval(max_rows = None, n_experiments = 3):
+	model_params = {'num_leaves': 555,
+          'min_child_weight': 0.034,
+          'feature_fraction': 0.379,
+          'bagging_fraction': 0.418,
+          'min_data_in_leaf': 106,
+          'objective': 'regression',
+          'max_depth': -1,
+          'learning_rate': 0.005,
+          "boosting_type": "gbdt",
+          "bagging_seed": 11,
+          "metric": 'rmse',
+          "verbosity": -1,
+          'reg_alpha': 0.3899,
+          'reg_lambda': 0.648,
+          'random_state': 222,
+         }
+
+	dict_metrics = {'run_id' : [], 'cols' : [], 'metric_name': [], 'model_params': [], 'metrics_val' : []}
+
+	for ii in range(n_experiments):
+		cols_cat, cols_num = features_get_cols()
+		df_train = load_data('features_set1_100.parquet', cols_cat + cols_num, 'train')
+		df_test = load_data('features_set1_100.parquet', cols_cat + cols_num, 'test1')
+		print('Features loaded')
+
+		X_train = X_transform(df_train, cols_cat + cols_num)
+		Y_train = Y_transform(df_train, 'demand')
+		X_test = X_transform(df_test, cols_cat + cols_num)
+		Y_test = Y_transform(df_test, 'demand')
+
+		# preparing split
+		n_fold = 1
+		folds = TimeSeriesSplit(n_splits=n_fold)
+		splits = folds.split(X_train, Y_train)
+
+		Y_test = np.zeros(X_test.shape[0])
+
+		for fold_n, (train_index, valid_index) in enumerate(splits):
+			print('Fold:',fold_n+1)
+			X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
+			Y_train_fold, Y_valid_fold = Y_train.iloc[train_index], Y_train.iloc[valid_index]
+			dtrain = lgb.Dataset(X_train_fold, label=Y_train_fold)
+			dvalid = lgb.Dataset(X_valid_fold, label=Y_valid_fold)
+			clf = lgb.train(model_params, dtrain, 2500, valid_sets = [dtrain, dvalid],early_stopping_rounds = 50, verbose_eval=100)
+			Y_valid_fold_pred = clf.predict(X_valid_fold,num_iteration=clf.best_iteration)
+			val_score = np.sqrt(metrics.mean_squared_error(Y_valid_fold_pred, Y_valid_fold))
+			print(f'val rmse score is {val_score}')
+
+			Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
+
+			dict_metrics['run_id'].append(datetime.now())
+			dict_metrics['cols'].append(";".join(X_train.columns.tolist()))
+			dict_metrics['model_params'].append(model_params)
+			dict_metrics['metric_name'].append('rmse')
+			dict_metrics['metrics_val'].append(val_score)
+
+	df_metrics = pd.DataFrame.from_dict(dict_metrics)
+	print("        DF metrics          ")
+	print(df_metrics)
+	df_metrics.to_csv("df_metrics.csv")
+
+
+
+
+
+if __name__ == "__main__":
+	# create_and_save_features(100, ["set1", "set2"])
+	run_eval(100)
+	
+	
+	
 
 """
 
@@ -208,199 +397,4 @@ def test_old():
 	df_metrics['metric_val'] = pd.Series(pred_mse[:300], index=dataframe.index) 
 	df_metrics.to_csv("run_eval.csv")
 """
-
-
-
-
-def transform_categorical_features(df):
-	nan_features = ['event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
-	for feature in nan_features:
-		df[feature].fillna('unknown', inplace = True)
 	
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
-	for feature in categorical_cols:
-		encoder = preprocessing.LabelEncoder()
-		df[feature] = encoder.fit_transform(df[feature].astype(str))
-
-	return df
-
-
-# def get_parquet_file_name(feature_set_name, max_rows):
-# 	return f'features_{feature_set_name}_{max_rows}.parquet'
-
-
-
-# def create_and_save_features(max_rows, feature_set_names):
-# 	for feature_set_name in feature_set_names:
-# 		df_feature = pd.DataFrame()
-# 		merged_df = prepare_raw_merged_df(max_rows)
-# 		if feature_set_name == "set1":
-# 			df_feature = create_set1_features(merged_df)
-# 		elif feature_set_name == "set2":
-# 			df_feature = create_set2_features(merged_df)
-# 		df_feature.to_parquet(get_parquet_file_name(feature_set_name, max_rows))
-# 		print(f'Saving data set with {max_rows} rows named {feature_set_name}')
-
-
-
-
-
-def add_time_features(df):
-	df['date'] = pd.to_datetime(df['date'])
-	df['year'] = df['date'].dt.year
-	df['month'] = df['date'].dt.month
-	df['week'] = df['date'].dt.week
-	df['day'] = df['date'].dt.day
-	df['dayofweek'] = df['date'].dt.dayofweek
-	return df
-
-
-def prepare_raw_merged_df(max_rows):
-	df_sales_train = pd.read_csv("sales_train_evaluation.csv/sales_train_evaluation.csv")
-	df_calendar = pd.read_csv("calendar.csv")
-	df_sales_validation = pd.read_csv("sales_train_validation.csv/sales_train_validation.csv")
-	df_sell_price = pd.read_csv("sell_prices.csv/sell_prices.csv")
-	df_submission = pd.read_csv("sample_submission.csv/sample_submission.csv")
-
-	df_sales_validation_melt = pd.melt(df_sales_validation[0:max_rows], id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
-	validation_rows = [row for row in df_submission['id'] if 'validation' in row]
-	evaluation_rows = [row for row in df_submission['id'] if 'evaluation' in row]
-	df_submission_validation = df_submission[df_submission['id'].isin(validation_rows)][0:max_rows]
-	df_submission_evaluation = df_submission[df_submission['id'].isin(evaluation_rows)][0:max_rows]
-	
-	df_product = df_sales_validation[['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']][1:1000].drop_duplicates()
-    
-	df_submission_validation = df_submission_validation.merge(df_product, how = 'left', on = 'id')
-	df_submission_evaluation = df_submission_evaluation.merge(df_product, how = 'left', on = 'id')
-
-	df_submission_validation = pd.melt(df_submission_validation, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
-	df_submission_evaluation = pd.melt(df_submission_evaluation, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
-    
-	df_sales_validation_melt['part'] = 'train'
-	df_submission_validation['part'] = 'test1'
-	df_submission_evaluation['part'] = 'test2'
-    
-	merged_df = pd.concat([df_sales_validation_melt, df_submission_validation, df_submission_evaluation], axis = 0)
-	df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
-	merged_df = pd.merge(merged_df, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
-	merged_df = merged_df.merge(df_sell_price, on = ['store_id', 'item_id', 'wm_yr_wk'], how = 'left')
-
-	merged_df = transform_categorical_features(merged_df)
-	merged_df = add_time_features(merged_df)
-
-	return merged_df
-
-
-def features_get_cols(mode = "random"):
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' , 'id_encode',]
-	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
-
-	cols_cat = []
-	cols_num = []
-
-	if mode == "random":
-		cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 5, replace = False)]
-		cols_num = [numerical_cols[i] for i in np.random.choice(len(numerical_cols), 5, replace = False) ]
-
-	if mode == "all":
-		cols_cat = categorical_cols
-		cols_num = numerical_cols
-
-	if mode == "smartway":
-		cols_cat = categorical_cols
-		cols_num = numerical_cols
-		# TODO: Need to update
-
-	return cols_cat, cols_num
-
-
-
-def load_data(path, selected_cols, part):
-	selected_cols = ['demand', 'date', 'part'] + selected_cols
-
-	merged_df = pd.read_parquet(path, columns = selected_cols)
-	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
-	return merged_df.drop(['part'], axis=1)
-
-
-def X_transform(df, selected_cols):
-	X_df = df.drop(['demand', 'date'], axis =1)
-	return X_df
-
-
-def Y_transform(df, selected_col):
-	Y_df= df[selected_col]
-	return Y_df
-
-
-def run_eval(max_rows = None, n_experiments = 3):
-	model_params = {'num_leaves': 555,
-          'min_child_weight': 0.034,
-          'feature_fraction': 0.379,
-          'bagging_fraction': 0.418,
-          'min_data_in_leaf': 106,
-          'objective': 'regression',
-          'max_depth': -1,
-          'learning_rate': 0.005,
-          "boosting_type": "gbdt",
-          "bagging_seed": 11,
-          "metric": 'rmse',
-          "verbosity": -1,
-          'reg_alpha': 0.3899,
-          'reg_lambda': 0.648,
-          'random_state': 222,
-         }
-
-	dict_metrics = {'run_id' : [], 'cols' : [], 'metric_name': [], 'model_params': [], 'metrics_val' : []}
-
-	for ii in range(n_experiments):
-		cols_cat, cols_num = features_get_cols()
-		df_train = load_data('features_set1_100.parquet', cols_cat + cols_num, 'train')
-		df_test = load_data('features_set1_100.parquet', cols_cat + cols_num, 'test1')
-		print('Features loaded')
-
-		X_train = X_transform(df_train, cols_cat + cols_num)
-		Y_train = Y_transform(df_train, 'demand')
-		X_test = X_transform(df_test, cols_cat + cols_num)
-		Y_test = Y_transform(df_test, 'demand')
-
-		# preparing split
-		n_fold = 3
-		folds = TimeSeriesSplit(n_splits=n_fold)
-		splits = folds.split(X_train, Y_train)
-
-		Y_test = np.zeros(X_test.shape[0])
-
-		for fold_n, (train_index, valid_index) in enumerate(splits):
-			print('Fold:',fold_n+1)
-			X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
-			Y_train_fold, Y_valid_fold = Y_train.iloc[train_index], Y_train.iloc[valid_index]
-			dtrain = lgb.Dataset(X_train_fold, label=Y_train_fold)
-			dvalid = lgb.Dataset(X_valid_fold, label=Y_valid_fold)
-			clf = lgb.train(model_params, dtrain, 2500, valid_sets = [dtrain, dvalid],early_stopping_rounds = 50, verbose_eval=100)
-			Y_valid_fold_pred = clf.predict(X_valid_fold,num_iteration=clf.best_iteration)
-			val_score = np.sqrt(metrics.mean_squared_error(Y_valid_fold_pred, Y_valid_fold))
-			print(f'val rmse score is {val_score}')
-
-			Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
-
-			dict_metrics['run_id'].append(datetime.now())
-			dict_metrics['cols'].append(";".join(X_train.columns.tolist()))
-			dict_metrics['model_params'].append(model_params)
-			dict_metrics['metric_name'].append('rmse')
-			dict_metrics['metrics_val'].append(val_score)
-
-	df_metrics = pd.DataFrame.from_dict(dict_metrics)
-	print("****************************")
-	print("        DF metrics          ")
-	print("****************************")
-	print(df_metrics)
-	df_metrics.to_csv("df_metrics.csv")
-
-
-
-
-
-if __name__ == "__main__":
-	# create_and_save_features(100, ["set1", "set2"])
-	run_eval(100)
