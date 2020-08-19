@@ -4,6 +4,11 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, KFold, RepeatedKFold, GroupKFold, GridSearchCV, train_test_split, TimeSeriesSplit
 from datetime import datetime
+import copy
+
+
+##### import all Feature engineering functions
+from util_feat_m5 import *
 
 
 def transform_categorical_features(df):
@@ -36,16 +41,25 @@ def transform_categorical_features(df):
 
 
 
-def add_time_features(df):
+def features_time_basic(dfraw, fname):
+	df = copy.deepcopy(dfraw)
 	df['date'] = pd.to_datetime(df['date'])
 	df['year'] = df['date'].dt.year
 	df['month'] = df['date'].dt.month
 	df['week'] = df['date'].dt.week
 	df['day'] = df['date'].dt.day
-	df['dayofweek'] = df['date'].dt.dayofweek
-	return df
+	df['dayofweek'] = df['date'].dt.dayofweek	
+	df.to_parquet(fname)
 
-
+def feature_merge_df(file_list, cols_join):
+   dfall = None
+   for fi in file_list :
+	dfi = pd.read_parquet(fi)	
+	cols_joini = [ t for r in cols_join if t in dfi.columns ] 
+	dfall = dfall.join(dfi.set_index(cols_joini), on = cols_joini, how="left") if dfall is not None else dfi
+   return dfall	
+		
+	
 def prepare_raw_merged_df(max_rows):
 	df_sales_train = pd.read_csv("sales_train_evaluation.csv/sales_train_evaluation.csv")
 	df_calendar = pd.read_csv("calendar.csv")
@@ -77,7 +91,7 @@ def prepare_raw_merged_df(max_rows):
 	merged_df = merged_df.merge(df_sell_price, on = ['store_id', 'item_id', 'wm_yr_wk'], how = 'left')
 
 	merged_df = transform_categorical_features(merged_df)
-	merged_df = add_time_features(merged_df)
+	# merged_df = add_time_features(merged_df)
 
 	return merged_df
 
@@ -114,8 +128,8 @@ def load_data(path, selected_cols, part):
 	return merged_df.drop(['part'], axis=1)
 
 
-def X_transform(df, selected_cols):
-	X_df = df.drop(['demand', 'date'], axis =1)
+def X_transform(df, ):
+	X_df = df[  selected_cols  ]    #.drop(['demand', 'date'], axis =1)
 	return X_df
 
 
