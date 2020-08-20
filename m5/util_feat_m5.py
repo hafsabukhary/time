@@ -32,7 +32,7 @@ def features_time_basic(dfraw, fname):
 	df['week'] = df['date'].dt.week
 	df['day'] = df['date'].dt.day
 	df['dayofweek'] = df['date'].dt.dayofweek	
-	df.to_parquet(fname)
+	return df
 
 
     
