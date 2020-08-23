@@ -221,7 +221,40 @@ def features_mean(df):
 def features_identity(df):
     return df
 
-  
+ def features_rolling(df):
+    created_cols = []
+
+    len_shift = 28
+    for i in [7,14,30,60,180]:
+        print('Rolling period:', i)
+        df['rolling_mean_'+str(i)] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(len_shift).rolling(i).mean())
+        df['rolling_std_'+str(i)]  = df.groupby(['id'])['demand'].transform(lambda x: x.shift(len_shift).rolling(i).std())
+        created_cols.append('rolling_mean_'+str(i))
+        created_cols.append('rolling_std_'+str(i))
+
+    # Rollings
+    # with sliding shift
+    for len_shift in [1,7,14]: 
+        print('Shifting period:', len_shift)
+        for len_window in [7,14,30,60]:
+            col_name = 'rolling_mean_tmp_'+str(len_shift)+'_'+str(len_window)
+            df[col_name] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(len_shift).rolling(len_window).mean())
+            created_cols.append(col_name)
+
+    return df[created_cols]
+
+
+
+def features_lag(df):
+    created_cols = []
+    lag_days = [col for col in range(28, 28+15)]
+    for lag_day in lag_days:
+        created_cols.append('lag_' + str(lag_day))
+        df['lag_' + str(lag_day)] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(lag_day))
+
+    return df[created_cols]
+
+ 
   
   
   
