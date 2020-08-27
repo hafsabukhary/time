@@ -25,21 +25,29 @@ def features_to_category(df):
 	return df
 
 
-def update_meta_csv(featnames, filename):
-	meta_csv = pd.DataFrame(columns = ['featname', 'filename'])
+def update_meta_csv(featnames, filename, cat_cols):
+	meta_csv = pd.DataFrame(columns = ['featname', 'filename', 'feattype'])
 	if os.path.exists('meta_features.csv'):
 		meta_csv = pd.read_csv('meta_features.csv')
-	append_data_dict = {'featname' : [], 'filename' : []}
+	append_data_dict = {'featname' : [], 'filename' : [], 'feattype' : []}
 	for feat in featnames:
 		if feat not in meta_csv['featname'].unique():
 			append_data_dict['filename'].append(filename)
 			append_data_dict['featname'].append(feat)
+			feat_type = "numeric" if feat not in cat_cols else "categorical"
+			append_data_dict['feattype'].append(feat_type)
 		else:
 			meta_csv.loc[meta_csv['featname'] == feat, 'filename'] = filename
 	append_df = pd.DataFrame.from_dict(append_data_dict)
 	meta_csv = meta_csv.append(append_df)
 	meta_csv.to_csv('meta_features.csv', index = False)
 
+
+def get_cat_num_features_from_meta_csv():
+	meta_csv = pd.read_csv('meta_features.csv')
+	num_feats = [ x for x in meta_csv[meta_csv["feattype"] == "numeric"]['featname'].tolist()  if x not in ["part", "demand", "date"]]
+	cat_feats = meta_csv[meta_csv["feattype"] == "categorical"]['featname'].tolist()
+	return cat_feats, num_feats
 
 
 def get_file_feat_from_meta_csv(selected_cols):
@@ -57,9 +65,10 @@ def features_generate_file(dir_in, dir_out, my_fun_features, features_group_name
     # features_generate_file(dir_in, dir_out, lag_featrues) 
 	
 	merged_df = pd.read_parquet(dir_in + "/raw_merged.df.parquet")
-	dfnew = my_fun_features(merged_df)
+	dfnew, cat_cols= my_fun_features(merged_df)
 	dfnew.to_parquet(f'{dir_out}/{features_group_name}.parquet')
-	update_meta_csv(dfnew.columns, f'{features_group_name}.parquet')
+	# num_cols = list(set(dfnew._get_numeric_data().columns))
+	update_meta_csv(dfnew.columns, f'{features_group_name}.parquet', cat_cols)
 
 
 def feature_merge_df(file_list, cols_join):
@@ -111,8 +120,10 @@ def raw_merged_df(fname='raw_merged.df.parquet', max_rows=100):
 
 
 def features_get_cols(mode = "random"):
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' ]
-	numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
+	# categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2' ]
+	# numerical_cols = ['snap_TX',  'sell_price', 'week', 'snap_CA', 'month', 'snap_WI', 'dayofweek', 'year']
+
+	categorical_cols, numerical_cols = get_cat_num_features_from_meta_csv()
 
 	cols_cat = []
 	cols_num = []
@@ -143,7 +154,12 @@ def load_data(path, selected_cols, part):
 	# 	file_df = pd.read_parquet(path + file_name, columns = file_cols)
 	# 	merged_df = pd.concat([merged_df, file_df], axis = 0)
 
-	feature_dfs = [pd.read_parquet(f'{path}/{file_name}', columns = file_cols) for file_name,file_cols in file_col_mapping.items()]
+	# for file_name,file_cols in file_col_mapping.items():
+	# 	print(file_name)
+	# 	print(file_cols)
+	# 	pd.read_parquet(f'{path}/{file_name}', columns = file_cols)		
+
+	feature_dfs = [pd.read_parquet(f'{path}/{file_name}', columns = file_cols) for file_name,file_cols in file_col_mapping.items() if len(file_cols) > 0]
 	merged_df = pd.concat(feature_dfs)
 
 	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
@@ -182,42 +198,36 @@ def run_eval(max_rows = None, n_experiments = 3):
 
 	for ii in range(n_experiments):
 		cols_cat, cols_num = features_get_cols()
-		df_train           = load_data('data/output', cols_cat + cols_num, 'train')
-		df_test            = load_data('data/output', cols_cat + cols_num, 'test1')
+		df          		 = load_data('data/output', cols_cat + cols_num, 'train')
+		df_output            = load_data('data/output', cols_cat + cols_num, 'test1')
 		print('Features loaded')
 
-		X_train            = X_transform(df_train, cols_cat + cols_num)
-		Y_train            = Y_transform(df_train, 'demand')
-		X_test             = X_transform(df_test, cols_cat + cols_num)
+		X 	               = X_transform(df, cols_cat + cols_num)
+		y            	   = Y_transform(df, 'demand')
+		X_output 		   = X_transform(df_output, cols_cat + cols_num)
 		# Y_test             = Y_transform(df_test, 'demand')
 
 		# preparing split
-		n_fold = 2
-		folds = TimeSeriesSplit(n_splits=n_fold)
-		splits = folds.split(X_train, Y_train)
+		X_train, X_test, Y_train, Y_test = train_test_split(X, y, test_size=0.33, random_state=42)
 
 		# Y_test = np.zeros(X_test.shape[0])
 
-		for fold_n, (train_index, valid_index) in enumerate(splits):
-			print('Fold:',fold_n+1)
-			X_train_fold, X_valid_fold = X_train.iloc[train_index], X_train.iloc[valid_index]
-			Y_train_fold, Y_valid_fold = Y_train.iloc[train_index], Y_train.iloc[valid_index]
-			dtrain                     = lgb.Dataset(X_train_fold, label=Y_train_fold)
-			dvalid                     = lgb.Dataset(X_valid_fold, label=Y_valid_fold)
-			clf                        = lgb.train(model_params, dtrain, 2500, 
-				                         valid_sets = [dtrain, dvalid], 
-				                         early_stopping_rounds = 50, verbose_eval=100)
-			Y_valid_fold_pred          = clf.predict(X_valid_fold,num_iteration=clf.best_iteration)
-			val_score                  = np.sqrt(metrics.mean_squared_error(Y_valid_fold_pred, Y_valid_fold))
-			#print(f'val rmse score is {val_score}')
+		dtrain                     = lgb.Dataset(X_train, label=Y_train)
+		dtest                      = lgb.Dataset(X_test, label=Y_test)
+		clf                        = lgb.train(model_params, dtrain, 2500, 
+			                         valid_sets = [dtrain, dtest], 
+			                         early_stopping_rounds = 50, verbose_eval=100)
+		Y_test_pred          	   = clf.predict(X_test,num_iteration=clf.best_iteration)
+		val_score                  = np.sqrt(metrics.mean_squared_error(Y_test_pred, Y_test))
+		#print(f'val rmse score is {val_score}')
 
-			# Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
+		# Y_test += clf.predict(X_test, num_iteration=clf.best_iteration)/n_fold
 
-			dict_metrics['run_id'].append(datetime.now())
-			dict_metrics['cols'].append(";".join(X_train.columns.tolist()))
-			dict_metrics['model_params'].append(model_params)
-			dict_metrics['metric_name'].append('rmse')
-			dict_metrics['metrics_val'].append(val_score)
+		dict_metrics['run_id'].append(datetime.now())
+		dict_metrics['cols'].append(";".join(X_train.columns.tolist()))
+		dict_metrics['model_params'].append(model_params)
+		dict_metrics['metric_name'].append('rmse')
+		dict_metrics['metrics_val'].append(val_score)
 
 	df_metrics = pd.DataFrame.from_dict(dict_metrics)
 	print("        DF metrics          ")
@@ -238,6 +248,10 @@ if __name__ == "__main__":
 	# Generating basic features
 	# features_generate_file(".", "data/output", identity_features, "identity")
 	# features_generate_file(".", "data/output", basic_time_features, "basic_time")
+
+	# Generating features
+	# features_generate_file(".", "data/output", features_rolling, "rolling")
+	# features_generate_file(".", "data/output", features_lag, "lag")
 
 	run_eval()
 	
