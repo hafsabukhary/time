@@ -31,8 +31,9 @@ def features_time_basic(dfraw, fname):
 	df['month'] = df['date'].dt.month
 	df['week'] = df['date'].dt.week
 	df['day'] = df['date'].dt.day
-	df['dayofweek'] = df['date'].dt.dayofweek	
-	return df
+	df['dayofweek'] = df['date'].dt.dayofweek
+    	cat_cols = []
+	return df, cat_cols
 
 
     
@@ -218,10 +219,15 @@ def features_mean(df):
     pass
 
 
-def features_identity(df):
-    return df
+def identity_features(df):
+    cat_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+    df = df.drop(['d', 'id', 'day', 'wm_yr_wk'], axis = 1)
+    return df, cat_cols
 
- def features_rolling(df):
+
+
+def features_rolling(df):
+    cat_cols = []
     created_cols = []
 
     len_shift = 28
@@ -241,18 +247,22 @@ def features_identity(df):
             df[col_name] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(len_shift).rolling(len_window).mean())
             created_cols.append(col_name)
 
-    return df[created_cols]
+    return df[created_cols], cat_cols
 
 
 
 def features_lag(df):
     created_cols = []
+    cat_cols = []
+
     lag_days = [col for col in range(28, 28+15)]
     for lag_day in lag_days:
         created_cols.append('lag_' + str(lag_day))
         df['lag_' + str(lag_day)] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(lag_day))
 
-    return df[created_cols]
+    return df[created_cols], cat_cols
+
+
 ''''
 import pandas as pd
 import numpy as np
