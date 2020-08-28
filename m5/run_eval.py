@@ -52,11 +52,11 @@ def get_cat_num_features_from_meta_csv():
 
 def get_file_feat_from_meta_csv(selected_cols):
 	meta_csv = pd.read_csv('meta_features.csv')
-	file_feat_mapping = {k:[] for k in meta_csv['filename'].unique().tolist()}
+	file_feat_mapping = {k:['date', 'item_id'] for k in meta_csv['filename'].unique().tolist()}
 	for selected_col in selected_cols:
 		selected_col_meta_df = meta_csv[meta_csv["featname"] == selected_col]
 		file_feat_mapping[selected_col_meta_df['filename'].tolist()[0]].append(selected_col)
-	return file_feat_mapping
+	return {k:list(set(v)) for k,v in file_feat_mapping.items()}
 
 
 def features_generate_file(dir_in, dir_out, my_fun_features, features_group_name) :
@@ -71,11 +71,10 @@ def features_generate_file(dir_in, dir_out, my_fun_features, features_group_name
 	update_meta_csv(dfnew.columns, f'{features_group_name}.parquet', cat_cols)
 
 
-def feature_merge_df(file_list, cols_join):
+def feature_merge_df(df_list, cols_join):
 	dfall = None
-	for fi in file_list :
-		dfi        = pd.read_parquet(fi)	
-		cols_joini = [ t for r in cols_join if t in dfi.columns ]
+	for dfi in df_list :
+		cols_joini = [ t for t in cols_join if t in dfi.columns ]
 		dfall      = dfall.join(dfi.set_index(cols_joini), on = cols_joini, how="left") if dfall is not None else dfi
 	return dfall	
 		
@@ -160,7 +159,7 @@ def load_data(path, selected_cols, part):
 	# 	pd.read_parquet(f'{path}/{file_name}', columns = file_cols)		
 
 	feature_dfs = [pd.read_parquet(f'{path}/{file_name}', columns = file_cols) for file_name,file_cols in file_col_mapping.items() if len(file_cols) > 0]
-	merged_df = pd.concat(feature_dfs)
+	merged_df = feature_merge_df(feature_dfs, ['date', 'item_id'])
 
 	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
 	return merged_df.drop(['part'], axis=1)
