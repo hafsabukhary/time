@@ -25,15 +25,15 @@ import tsfresh
 
 
 def features_time_basic(dfraw, fname):
-	df = copy.deepcopy(dfraw)
-	df['date'] = pd.to_datetime(df['date'])
-	df['year'] = df['date'].dt.year
-	df['month'] = df['date'].dt.month
-	df['week'] = df['date'].dt.week
-	df['day'] = df['date'].dt.day
-	df['dayofweek'] = df['date'].dt.dayofweek
-    	cat_cols = []
-	return df, cat_cols
+    df = copy.deepcopy(dfraw)
+    df['date_t'] = pd.to_datetime(df['date'])
+    df['year'] = df['date_t'].dt.year
+    df['month'] = df['date_t'].dt.month
+    df['week'] = df['date_t'].dt.week
+    df['day'] = df['date_t'].dt.day
+    df['dayofweek'] = df['date_t'].dt.dayofweek
+    cat_cols = []
+    return df[['year', 'month', 'week', 'day', 'dayofweek', 'date', 'item_id']], cat_cols
 
 
     
@@ -246,6 +246,9 @@ def features_rolling(df):
             col_name = 'rolling_mean_tmp_'+str(len_shift)+'_'+str(len_window)
             df[col_name] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(len_shift).rolling(len_window).mean())
             created_cols.append(col_name)
+    
+    created_cols.append('date')
+    created_cols.append('item_id')
 
     return df[created_cols], cat_cols
 
@@ -259,6 +262,9 @@ def features_lag(df):
     for lag_day in lag_days:
         created_cols.append('lag_' + str(lag_day))
         df['lag_' + str(lag_day)] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(lag_day))
+
+    created_cols.append('date')
+    created_cols.append('item_id')
 
     return df[created_cols], cat_cols
 
