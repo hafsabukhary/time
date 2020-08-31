@@ -45,7 +45,7 @@ def update_meta_csv(featnames, filename, cat_cols):
 
 def get_cat_num_features_from_meta_csv():
 	meta_csv = pd.read_csv('meta_features.csv')
-	num_feats = [ x for x in meta_csv[meta_csv["feattype"] == "numeric"]['featname'].tolist()  if x not in ["part", "demand", "date"]]
+	num_feats = [ x for x in meta_csv[meta_csv["feattype"] == "numeric"]['featname'].tolist()  if x not in ["demand", "date"]]
 	cat_feats = meta_csv[meta_csv["feattype"] == "categorical"]['featname'].tolist()
 	return cat_feats, num_feats
 
@@ -84,27 +84,28 @@ def raw_merged_df(fname='raw_merged.df.parquet', max_rows=100):
 	df_calendar               = pd.read_csv("data/calendar.csv")
 	df_sales_val              = pd.read_csv("data/sales_train_val.csv")
 	df_sell_price             = pd.read_csv("data/sell_prices.csv")
-	df_submi                  = pd.read_csv("data/sample_submi.csv")
+	# df_submi                  = pd.read_csv("data/sample_submi.csv")
 
 	df_sales_val_melt         = pd.melt(df_sales_val[0:max_rows], id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
-	val_rows                  = [row for row in df_submi['id'] if 'val' in row]
-	eval_rows                 = [row for row in df_submi['id'] if 'eval' in row]
-	df_submi_val              = df_submi[df_submi['id'].isin(val_rows)][0:max_rows]
-	df_submi_eval             = df_submi[df_submi['id'].isin(eval_rows)][0:max_rows]
+	# val_rows                  = [row for row in df_submi['id'] if 'val' in row]
+	# eval_rows                 = [row for row in df_submi['id'] if 'eval' in row]
+	# df_submi_val              = df_submi[df_submi['id'].isin(val_rows)][0:max_rows]
+	# df_submi_eval             = df_submi[df_submi['id'].isin(eval_rows)][0:max_rows]
 	
 	df_product                = df_sales_val[['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']][1:1000].drop_duplicates()
     
-	df_submi_val              = df_submi_val.merge(df_product, how = 'left', on = 'id')
-	df_submi_eval             = df_submi_eval.merge(df_product, how = 'left', on = 'id')
+	# df_submi_val              = df_submi_val.merge(df_product, how = 'left', on = 'id')
+	# df_submi_eval             = df_submi_eval.merge(df_product, how = 'left', on = 'id')
 
-	df_submi_val              = pd.melt(df_submi_val, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
-	df_submi_eval             = pd.melt(df_submi_eval, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+	# df_submi_val              = pd.melt(df_submi_val, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
+	# df_submi_eval             = pd.melt(df_submi_eval, id_vars = ['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'], var_name = 'day', value_name = 'demand')
     
-	df_sales_val_melt['part'] = 'train'
-	df_submi_val['part']      = 'test1'
-	df_submi_eval['part']     = 'test2'
+	# df_sales_val_melt['part'] = 'train'
+	# df_submi_val['part']      = 'test1'
+	# df_submi_eval['part']     = 'test2'
     
-	merged_df = pd.concat([df_sales_val_melt, df_submi_val, df_submi_eval], axis = 0)
+	# merged_df = pd.concat([df_sales_val_melt, df_submi_val, df_submi_eval], axis = 0)
+	merged_df = df_sales_val_melt
 	df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
 	merged_df = pd.merge(merged_df, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
 	merged_df = merged_df.merge(df_sell_price, on = ['store_id', 'item_id', 'wm_yr_wk'], how = 'left')
@@ -144,8 +145,8 @@ def features_get_cols(mode = "random"):
 
 
 
-def load_data(path, selected_cols, part):
-	selected_cols = ['demand', 'date', 'part'] + selected_cols
+def load_data(path, selected_cols):
+	selected_cols = ['demand', 'date'] + selected_cols
 
 	file_col_mapping = get_file_feat_from_meta_csv(selected_cols)
 	# merged_df = pd.DataFrame()
@@ -161,8 +162,8 @@ def load_data(path, selected_cols, part):
 	feature_dfs = [pd.read_parquet(f'{path}/{file_name}', columns = file_cols) for file_name,file_cols in file_col_mapping.items() if len(file_cols) > 0]
 	merged_df = feature_merge_df(feature_dfs, ['date', 'item_id'])
 
-	merged_df = merged_df[merged_df['part'] == part].sort_values('date')
-	return merged_df.drop(['part'], axis=1)
+	merged_df = merged_df.sort_values('date')
+	return merged_df
 
 
 def X_transform(df, selected_cols):
@@ -197,13 +198,13 @@ def run_eval(max_rows = None, n_experiments = 3):
 
 	for ii in range(n_experiments):
 		cols_cat, cols_num = features_get_cols()
-		df          		 = load_data('data/output', cols_cat + cols_num, 'train')
-		df_output            = load_data('data/output', cols_cat + cols_num, 'test1')
+		df          		 = load_data('data/output', cols_cat + cols_num)
+		# df_output            = load_data('data/output', cols_cat + cols_num, 'test1')
 		print('Features loaded')
 
 		X 	               = X_transform(df, cols_cat + cols_num)
 		y            	   = Y_transform(df, 'demand')
-		X_output 		   = X_transform(df_output, cols_cat + cols_num)
+		# X_output 		   = X_transform(df_output, cols_cat + cols_num)
 		# Y_test             = Y_transform(df_test, 'demand')
 
 		# preparing split
@@ -242,15 +243,15 @@ if __name__ == "__main__":
 	#run_eval(100)
 
 	# To be run once
-	# raw_merged_df()
+	raw_merged_df()
 
 	# Generating basic features
-	# features_generate_file(".", "data/output", identity_features, "identity")
-	# features_generate_file(".", "data/output", basic_time_features, "basic_time")
+	features_generate_file(".", "data/output", identity_features, "identity")
+	features_generate_file(".", "data/output", basic_time_features, "basic_time")
 
 	# Generating features
-	# features_generate_file(".", "data/output", features_rolling, "rolling")
-	# features_generate_file(".", "data/output", features_lag, "lag")
+	features_generate_file(".", "data/output", features_rolling, "rolling")
+	features_generate_file(".", "data/output", features_lag, "lag")
 
 	run_eval()
 	
