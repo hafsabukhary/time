@@ -203,6 +203,25 @@ def features_lag(df, fname):
 
     out_df.to_parquet(fname) 
     # return out_df
+
+
+def features_tsfresh(df):
+    df = df[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date']]
+    df = roll_time_series(df, column_id="item_id", column_sort="date")
+    existing_cols = df.columns.tolist()
+    y = df['demand']
+    X_cols = [x for x in existing_cols if not x == "demand"]
+    X = df[X_cols]
+    X = X.fillna(value = {'sell_price' : X['sell_price'].mean(skipna = True)})
+    X = X[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date']]
+    X_filtered = extract_relevant_features(X, y, column_id='item_id', column_sort='date')
+
+    print(X_filtered.columns)
+
+    feature_df = pd.concat([X[['item_id', 'date']], X_filtered])
+
+    return feature_df, []
+
   
 """
 def basic_time_features(df):
