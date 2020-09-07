@@ -231,6 +231,33 @@ def features_tsfresh(df):
     return feature_df, []
 
 
+def features_tsfresh_select(df):
+    df = df[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date', 'store_id', 'id']]
+    print(df)
+    df = roll_time_series(df, column_id="item_id", column_sort="date")
+    existing_cols = df.columns.tolist()
+    y = df['demand']
+    X_cols = [x for x in existing_cols if not x == "demand"]
+    X = df[X_cols]
+    X = X.fillna(value = {'sell_price' : X['sell_price'].mean(skipna = True)})
+    X = X[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date']]
+    X_filtered = extract_relevant_features(X, y, column_id='item_id', column_sort='date')
+
+    filtered_col_names = X_filtered.columns.tolist()
+
+    filtered_col_names_mapping = {}
+
+    for filtered_col_name in filtered_col_names:
+        filtered_col_names_mapping[filtered_col_name] = filtered_col_name.replace('"','').replace(',','')
+
+    X_filtered = X_filtered.rename(columns = filtered_col_names_mapping)
+    # This is done because lightgbm can not have features with " in the feature name
+
+    feature_df = pd.concat([X[['item_id', 'date']], X_filtered])
+
+    return feature_df, []
+
+
   
 """
 def basic_time_features(df):
