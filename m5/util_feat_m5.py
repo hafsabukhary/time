@@ -205,30 +205,55 @@ def features_lag(df, fname):
     # return out_df
 
 
-def features_tsfresh(df):
-    df = df[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date', 'demand']]
-    df = roll_time_series(df, column_id="item_id", column_sort="date")
-    existing_cols = df.columns.tolist()
-    y = df['demand']
-    X_cols = [x for x in existing_cols if not x == "demand"]
-    X = df[X_cols]
-    X = X.fillna(value = {'sell_price' : X['sell_price'].mean(skipna = True)})
-    X = X[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date']]
-    X_filtered = extract_features(X, column_id='item_id', column_sort='date')
+def _get_tsfresh_melted_features_single_row(single_row_df):
+    df_cols = single_row_df.columns.tolist()
+    selected_cols = [x for x in df_cols if "d_" in x]
+    single_row_df_T = single_row_df[selected_cols].T
+    single_row_df_T["time"] = range(0, len(single_row_df_T.index))
+    single_row_df_T["id"] = range(0, len(single_row_df_T.index))
+    single_row_df_T.rename(columns={ single_row_df_T.columns[0]: "val" }, inplace = True)
 
-    filtered_col_names = X_filtered.columns.tolist()
+    X_feat = extract_features(single_row_df_T, column_id='id', column_sort='time')
 
-    filtered_col_names_mapping = {}
+    feat_col_names = X_feat.columns.tolist()
+    feat_col_names_mapping = {}
+    for feat_col_name in feat_col_names:
+        feat_col_names_mapping[feat_col_name] = feat_col_name.replace('"','').replace(',','')
 
-    for filtered_col_name in filtered_col_names:
-        filtered_col_names_mapping[filtered_col_name] = filtered_col_name.replace('"','').replace(',','')
+    X_feat = X_feat.rename(columns = feat_col_names_mapping)
+    X_feat_T = X_feat.T
 
-    X_filtered = X_filtered.rename(columns = filtered_col_names_mapping)
-    # This is done because lightgbm can not have features with " in the feature name
+    X_feat_T["item_id"] = np.repeat(single_row_df["item_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["id"] = np.repeat(single_row_df["id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["cat_id"] = np.repeat(single_row_df["cat_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["dept_id"] = np.repeat(single_row_df["dept_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["store_id"] = np.repeat(single_row_df["store_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["state_id"] = np.repeat(single_row_df["state_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["variable"] = X_feat_T.index
+    
+    single_row_df["variable"] = pd.Series(["demand"])
+    X_feat_T = X_feat_T.append(single_row_df, ignore_index= True)
+    return X_feat_T.set_index(['item_id', 'id', 'cat_id', 'dept_id', 'store_id', 'variable']).rename_axis(['day'], axis=1).stack().unstack('variable').reset_index()
 
-    feature_df = pd.concat([X[['item_id', 'date']], X_filtered])
 
-    return feature_df, []
+def _get_tsfresh_df_sales_melt(df_sales):
+    X_feat = pd.DataFrame()
+    for i in range(len(df_sales.index)):
+        single_row_df = df_sales.loc[[i]]
+        X_feat_single_row_df = _get_tsfresh_melted_features_single_row(single_row_df)
+        X_feat.append(X_feat_single_row_df, ignore_index = True)
+    return X_feat
+
+
+def features_tsfresh(df, max_rows = 5):
+    # df is taken as an argument to make it work in the existing pipeline of saving features in meta_csv
+    df_sales_val              = pd.read_csv("data/sales_train_val.csv")
+
+    df_sales_val_melt         = _get_tsfresh_df_sales_melt(df_sales_val[0:max_rows])    
+    
+    # merged_df = pd.concat([df_sales_val_melt, df_submi_val, df_submi_eval], axis = 0)
+    selected_cols = [x for x in df_sales_val_melt.columns.tolist() if x not in ['item_id', 'id', 'cat_id', 'dept_id', 'store_id', 'variable', 'day', 'demand']]
+    return df_sales_val_melt[selected_cols], []
 
 
 def features_tsfresh_select(df):
