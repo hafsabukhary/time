@@ -233,27 +233,34 @@ def _get_tsfresh_melted_features_single_row(single_row_df):
     
     single_row_df["variable"] = pd.Series(["demand"])
     X_feat_T = X_feat_T.append(single_row_df, ignore_index= True)
-    return X_feat_T.set_index(['item_id', 'id', 'cat_id', 'dept_id', 'store_id', 'variable']).rename_axis(['day'], axis=1).stack().unstack('variable').reset_index()
+    return X_feat_T.set_index(['item_id', 'id', 'cat_id', 'dept_id', 'store_id', 'state_id','variable']).rename_axis(['day'], axis=1).stack().unstack('variable').reset_index()
 
 
 def _get_tsfresh_df_sales_melt(df_sales):
-    X_feat = pd.DataFrame()
+    # X_feat = pd.DataFrame()
     for i in range(len(df_sales.index)):
         single_row_df = df_sales.loc[[i]]
         X_feat_single_row_df = _get_tsfresh_melted_features_single_row(single_row_df)
-        X_feat.append(X_feat_single_row_df, ignore_index = True)
+        if i == 0 :
+            X_feat = X_feat_single_row_df
+        else:
+            X_feat.append(X_feat_single_row_df, ignore_index = True)
     return X_feat
 
 
-def features_tsfresh(df, max_rows = 5):
+
+def features_tsfresh(df, max_rows = 10):
     # df is taken as an argument to make it work in the existing pipeline of saving features in meta_csv
     df_sales_val              = pd.read_csv("data/sales_train_val.csv")
+    df_calendar               = pd.read_csv("data/calendar.csv")
 
     df_sales_val_melt         = _get_tsfresh_df_sales_melt(df_sales_val[0:max_rows])    
-    
+    df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
+    merged_df = pd.merge(df_sales_val_melt, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
+        
     # merged_df = pd.concat([df_sales_val_melt, df_submi_val, df_submi_eval], axis = 0)
-    selected_cols = [x for x in df_sales_val_melt.columns.tolist() if x not in ['item_id', 'id', 'cat_id', 'dept_id', 'store_id', 'variable', 'day', 'demand']]
-    return df_sales_val_melt[selected_cols], []
+    selected_cols = [x for x in merged_df.columns.tolist() if x not in [ 'id', 'cat_id', 'dept_id', 'store_id', 'variable', 'day', 'demand', 'state_id']]
+    return merged_df[selected_cols], []
 
 
 def features_tsfresh_select(df):
