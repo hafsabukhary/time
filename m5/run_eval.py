@@ -17,7 +17,7 @@ def features_to_category(df):
 	for feature in nan_features:
 		df[feature].fillna('unknown', inplace = True)
 	
-	categorical_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
+	categorical_cols = ['dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
 	for feature in categorical_cols:
 		encoder     = preprocessing.LabelEncoder()
 		df[feature] = encoder.fit_transform(df[feature].astype(str))
@@ -46,7 +46,7 @@ def update_meta_csv(featnames, filename, cat_cols):
 def get_cat_num_features_from_meta_csv():
 	meta_csv = pd.read_csv('meta_features.csv')
 	num_feats = [ x for x in meta_csv[meta_csv["feattype"] == "numeric"]['featname'].tolist()  if x not in ["demand", "date"]]
-	cat_feats = meta_csv[meta_csv["feattype"] == "categorical"]['featname'].tolist()
+	cat_feats = [ x for x in meta_csv[meta_csv["feattype"] == "categorical"]['featname'].tolist() if x not in ["item_id"]]
 	return cat_feats, num_feats
 
 
@@ -79,7 +79,7 @@ def feature_merge_df(df_list, cols_join):
 	return dfall	
 		
 	
-def raw_merged_df(fname='raw_merged.df.parquet', max_rows=100):
+def raw_merged_df(fname='raw_merged.df.parquet', max_rows=10):
 	df_sales_train            = pd.read_csv("data/sales_train_eval.csv")
 	df_calendar               = pd.read_csv("data/calendar.csv")
 	df_sales_val              = pd.read_csv("data/sales_train_val.csv")
@@ -91,9 +91,7 @@ def raw_merged_df(fname='raw_merged.df.parquet', max_rows=100):
 	# eval_rows                 = [row for row in df_submi['id'] if 'eval' in row]
 	# df_submi_val              = df_submi[df_submi['id'].isin(val_rows)][0:max_rows]
 	# df_submi_eval             = df_submi[df_submi['id'].isin(eval_rows)][0:max_rows]
-	
-	df_product                = df_sales_val[['id', 'item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']][1:1000].drop_duplicates()
-    
+	    
 	# df_submi_val              = df_submi_val.merge(df_product, how = 'left', on = 'id')
 	# df_submi_eval             = df_submi_eval.merge(df_product, how = 'left', on = 'id')
 
@@ -129,7 +127,7 @@ def features_get_cols(mode = "random"):
 	cols_num = []
 
 	if mode == "random":
-		cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 5, replace = False)]
+		cols_cat = [categorical_cols[i] for i in np.random.choice(len(categorical_cols), 3, replace = False)]
 		cols_num = [numerical_cols[i] for i in np.random.choice(len(numerical_cols), 5, replace = False) ]
 
 	if mode == "all":
@@ -163,6 +161,7 @@ def load_data(path, selected_cols):
 	merged_df = feature_merge_df(feature_dfs, ['date', 'item_id'])
 
 	merged_df = merged_df.sort_values('date')
+	merged_df.drop(['item_id'], inplace = True, axis = 1)
 	return merged_df
 
 
@@ -197,8 +196,9 @@ def run_eval(max_rows = None, n_experiments = 3):
 	dict_metrics = {'run_id' : [], 'cols' : [], 'metric_name': [], 'model_params': [], 'metrics_val' : []}
 
 	for ii in range(n_experiments):
-		cols_cat, cols_num = features_get_cols()
+		cols_cat, cols_num   = features_get_cols()
 		df          		 = load_data('data/output', cols_cat + cols_num)
+		
 		# df_output            = load_data('data/output', cols_cat + cols_num, 'test1')
 		print('Features loaded')
 
@@ -209,6 +209,7 @@ def run_eval(max_rows = None, n_experiments = 3):
 
 		# preparing split
 		X_train, X_test, Y_train, Y_test = train_test_split(X, y, test_size=0.33, random_state=42)
+		print(Y_test)
 
 		# Y_test = np.zeros(X_test.shape[0])
 
@@ -245,13 +246,12 @@ if __name__ == "__main__":
 	# To be run once
 	raw_merged_df()
 
-	# Generating basic features
-	features_generate_file(".", "data/output", identity_features, "identity")
-	features_generate_file(".", "data/output", basic_time_features, "basic_time")
-
 	# Generating features
+	features_generate_file(".", "data/output", basic_time_features, "basic_time")
 	features_generate_file(".", "data/output", features_rolling, "rolling")
 	features_generate_file(".", "data/output", features_lag, "lag")
+	features_generate_file(".", "data/output", features_tsfresh, "tsfresh")
+	features_generate_file(".", "data/output", identity_features, "identity")
 
 	run_eval()
 	
