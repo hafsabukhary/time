@@ -236,7 +236,7 @@ def run_eval(max_rows = None, n_experiments = 3):
 	df_metrics.to_csv("df_metrics.csv")
 
 
-def main(path_input = "data/output" ):
+def main( input_path = "data/output" ):
 	# create_and_save_features(100, ["set1", "set2"])
 	#run_eval(100)
 
@@ -244,11 +244,11 @@ def main(path_input = "data/output" ):
 	raw_merged_df()
 
 	# Generating features
-	features_generate_file(".",  path_input, basic_time_features, "basic_time")
-	features_generate_file(".",  path_input , features_rolling, "rolling")
-	features_generate_file(".",  path_input , features_lag, "lag")
-	features_generate_file(".",  path_input , features_tsfresh, "tsfresh")
-	features_generate_file(".",  path_input , identity_features, "identity")
+	features_generate_file(".",  input_path, basic_time_features, "basic_time")
+	features_generate_file(".",  input_path , features_rolling, "rolling")
+	features_generate_file(".",  input_path , features_lag, "lag")
+	features_generate_file(".",  input_path , features_tsfresh, "tsfresh")
+	features_generate_file(".",  input_path , identity_features, "identity")
 
 	run_eval()
 	
