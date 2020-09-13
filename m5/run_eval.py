@@ -6,7 +6,7 @@ from sklearn.model_selection import StratifiedKFold, KFold, RepeatedKFold, Group
 from datetime import datetime
 import copy
 import os
-
+import fire
 
 ##### import all Feature engineering functions
 from util_feat_m5 import *
@@ -236,10 +236,7 @@ def run_eval(max_rows = None, n_experiments = 3):
 	df_metrics.to_csv("df_metrics.csv")
 
 
-
-
-
-if __name__ == "__main__":
+def main(path_input = "data/output" ):
 	# create_and_save_features(100, ["set1", "set2"])
 	#run_eval(100)
 
@@ -247,13 +244,18 @@ if __name__ == "__main__":
 	raw_merged_df()
 
 	# Generating features
-	features_generate_file(".", "data/output", basic_time_features, "basic_time")
-	features_generate_file(".", "data/output", features_rolling, "rolling")
-	features_generate_file(".", "data/output", features_lag, "lag")
-	features_generate_file(".", "data/output", features_tsfresh, "tsfresh")
-	features_generate_file(".", "data/output", identity_features, "identity")
+	features_generate_file(".",  path_input, basic_time_features, "basic_time")
+	features_generate_file(".",  path_input , features_rolling, "rolling")
+	features_generate_file(".",  path_input , features_lag, "lag")
+	features_generate_file(".",  path_input , features_tsfresh, "tsfresh")
+	features_generate_file(".",  path_input , identity_features, "identity")
 
 	run_eval()
+	
+
+if __name__ == "__main__":
+    import fire
+    fire.Fire()
 	
 	
 	
