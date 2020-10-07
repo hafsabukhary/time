@@ -20,12 +20,12 @@ Feature Tools for advacned fewatures `https://github.com/Featuretools/predict-re
 
 import pandas as pd
 import tsfresh
+from tsfresh import extract_relevant_features, extract_features
+import numpy as np
 
 
 
-
-def features_time_basic(dfraw, fname):
-    df = copy.deepcopy(dfraw)
+def features_time_basic(df, input_raw_path = None, dir_out = None, features_group_name = None, max_rows = 10):
     df['date_t'] = pd.to_datetime(df['date'])
     df['year'] = df['date_t'].dt.year
     df['month'] = df['date_t'].dt.month
@@ -36,18 +36,18 @@ def features_time_basic(dfraw, fname):
     return df[['year', 'month', 'week', 'day', 'dayofweek', 'date', 'item_id']], cat_cols
 
 
-    
-    
+
+
 def features_lag(df, fname):
     out_df = df[['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']]
     ###############################################################################
-    # day lag 29~57 day and last year's day lag 1~28 day 
+    # day lag 29~57 day and last year's day lag 1~28 day
     day_lag = df.iloc[:,-28:]
     day_year_lag = df.iloc[:,-393:-365]
     day_lag.columns = [str("lag_{}_day".format(i)) for i in range(29,57)] # Rename columns
     day_year_lag.columns = [str("lag_{}_day_of_last_year".format(i)) for i in range(1,29)]
 
-    # Rolling mean(3) and (7) and (28) and (84) 29~57 day and last year's day lag 1~28 day 
+    # Rolling mean(3) and (7) and (28) and (84) 29~57 day and last year's day lag 1~28 day
     rolling_3 = df.iloc[:,-730:].T.rolling(3).mean().T.iloc[:,-28:]
     rolling_3.columns = [str("rolling3_lag_{}_day".format(i)) for i in range(29,57)] # Rename columns
     rolling_3_year = df.iloc[:,-730:].T.rolling(3).mean().T.iloc[:,-393:-365]
@@ -94,7 +94,7 @@ def features_lag(df, fname):
     ###############################################################################
     # dept_id
     group_dept = df.groupby("dept_id").sum()
-    # day lag 29~57 day and last year's day lag 1~28 day 
+    # day lag 29~57 day and last year's day lag 1~28 day
     dept_day_lag = group_dept.iloc[:,-28:]
     dept_day_year_lag = group_dept.iloc[:,-393:-365]
     dept_day_lag.columns = [str("dept_lag_{}_day".format(i)) for i in range(29,57)]
@@ -115,10 +115,10 @@ def features_lag(df, fname):
     out_df = pd.merge(out_df, dept_day_year_lag, left_on="dept_id", right_index=True, how="left")
     out_df = pd.merge(out_df, month_dept_lag, left_on="dept_id", right_index=True, how="left")
 
-    ###############################################################################       
+    ###############################################################################
     # cat_id
     group_cat = df.groupby("cat_id").sum()
-    # day lag 29~57 day and last year's day lag 1~28 day 
+    # day lag 29~57 day and last year's day lag 1~28 day
     cat_day_lag = group_cat.iloc[:,-28:]
     cat_day_year_lag = group_cat.iloc[:,-393:-365]
     cat_day_lag.columns = [str("cat_lag_{}_day".format(i)) for i in range(29,57)]
@@ -143,7 +143,7 @@ def features_lag(df, fname):
     ###############################################################################
     # store_id
     group_store = df.groupby("store_id").sum()
-    # day lag 29~57 day and last year's day lag 1~28 day 
+    # day lag 29~57 day and last year's day lag 1~28 day
     store_day_lag = group_store.iloc[:,-28:]
     store_day_year_lag = group_store.iloc[:,-393:-365]
     store_day_lag.columns = [str("store_lag_{}_day".format(i)) for i in range(29,57)]
@@ -168,7 +168,7 @@ def features_lag(df, fname):
     ###############################################################################
     # state_id
     group_state = df.groupby("state_id").sum()
-    # day lag 29~57 day and last year's day lag 1~28 day 
+    # day lag 29~57 day and last year's day lag 1~28 day
     state_day_lag = group_state.iloc[:,-28:]
     state_day_year_lag = group_state.iloc[:,-393:-365]
     state_day_lag.columns = [str("state_lag_{}_day".format(i)) for i in range(29,57)]
@@ -201,7 +201,7 @@ def features_lag(df, fname):
 
     out_df = pd.concat([out_df, df_cate_oh], axis=1)
 
-    out_df.to_parquet(fname) 
+    out_df.to_parquet(fname)
     # return out_df
 
 
@@ -230,34 +230,43 @@ def _get_tsfresh_melted_features_single_row(single_row_df):
     X_feat_T["store_id"] = np.repeat(single_row_df["store_id"].tolist()[0], len(X_feat_T.index))
     X_feat_T["state_id"] = np.repeat(single_row_df["state_id"].tolist()[0], len(X_feat_T.index))
     X_feat_T["variable"] = X_feat_T.index
-    
+
     single_row_df["variable"] = pd.Series(["demand"])
     X_feat_T = X_feat_T.append(single_row_df, ignore_index= True)
     return X_feat_T.set_index(['item_id', 'id', 'cat_id', 'dept_id', 'store_id', 'state_id','variable']).rename_axis(['day'], axis=1).stack().unstack('variable').reset_index()
 
 
-def _get_tsfresh_df_sales_melt(df_sales):
+def _get_tsfresh_df_sales_melt(df_sales, dir_out, features_group_name, df_calendar):
     # X_feat = pd.DataFrame()
+    df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
     for i in range(len(df_sales.index)):
         single_row_df = df_sales.loc[[i]]
         X_feat_single_row_df = _get_tsfresh_melted_features_single_row(single_row_df)
-        if i == 0 :
+        if i % 5 ==0:
             X_feat = X_feat_single_row_df
+        if (i+1) % 5 == 0 :
+            merged_df = pd.merge(X_feat, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
+
+            # merged_df = pd.concat([df_sales_val_melt, df_submi_val, df_submi_eval], axis = 0)
+            selected_cols = [x for x in merged_df.columns.tolist() if x not in [ 'id', 'cat_id', 'dept_id', 'store_id', 'variable', 'day', 'demand', 'state_id']]
+            merged_df_selected_cols = merged_df[selected_cols]
+            merged_df_selected_cols.columns = merged_df_selected_cols.columns.astype(str)
+            merged_df_selected_cols.to_parquet(f'{dir_out}/{features_group_name}_{i}.parquet')
         else:
             X_feat.append(X_feat_single_row_df, ignore_index = True)
     return X_feat
 
 
 
-def features_tsfresh(df, max_rows = 10):
+def features_tsfresh(df, input_raw_path, dir_out, features_group_name, max_rows = 10):
     # df is taken as an argument to make it work in the existing pipeline of saving features in meta_csv
-    df_sales_val              = pd.read_csv("data/sales_train_val.csv")
-    df_calendar               = pd.read_csv("data/calendar.csv")
+    df_sales_val              = pd.read_csv(input_raw_path + "/sales_train_val.csv")
+    df_calendar               = pd.read_csv(input_raw_path + "/calendar.csv")
 
-    df_sales_val_melt         = _get_tsfresh_df_sales_melt(df_sales_val[0:max_rows])    
-    df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
+    df_sales_val_melt         = _get_tsfresh_df_sales_melt(df_sales_val[0:max_rows], dir_out, features_group_name, df_calendar)
+    # df_calendar.drop(['weekday', 'wday', 'month', 'year'], inplace = True, axis = 1)
     merged_df = pd.merge(df_sales_val_melt, df_calendar, how = 'left', left_on = ['day'], right_on = ['d'])
-        
+
     # merged_df = pd.concat([df_sales_val_melt, df_submi_val, df_submi_eval], axis = 0)
     selected_cols = [x for x in merged_df.columns.tolist() if x not in [ 'id', 'cat_id', 'dept_id', 'store_id', 'variable', 'day', 'demand', 'state_id']]
     return merged_df[selected_cols], []
@@ -265,7 +274,6 @@ def features_tsfresh(df, max_rows = 10):
 
 def features_tsfresh_select(df):
     df = df[['snap_CA', 'snap_TX', 'snap_WI', 'sell_price', 'item_id', 'date', 'store_id', 'id']]
-    print(df)
     df = roll_time_series(df, column_id="item_id", column_sort="date")
     existing_cols = df.columns.tolist()
     y = df['demand']
@@ -290,9 +298,7 @@ def features_tsfresh_select(df):
     return feature_df, []
 
 
-  
-"""
-def basic_time_features(df):
+def basic_time_features(df, input_raw_path = None, dir_out = None, features_group_name = None, max_rows = 10):
     df['date'] = pd.to_datetime(df['date'])
     df['year'] = df['date'].dt.year
     df['month'] = df['date'].dt.month
@@ -300,20 +306,20 @@ def basic_time_features(df):
     df['day'] = df['date'].dt.day
     df['dayofweek'] = df['date'].dt.dayofweek
     return df[['year', 'month', 'week', 'day', 'dayofweek']]
-"""
 
-def features_mean(df):
+
+def features_mean(df, input_raw_path = None, max_rows = 10):
     pass
 
 
-def identity_features(df):
+def identity_features(df, input_raw_path = None, dir_out = None, features_group_name = None, max_rows = 10):
     cat_cols = ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id', 'event_name_1', 'event_type_1', 'event_name_2', 'event_type_2']
     df = df.drop(['d', 'id', 'day', 'wm_yr_wk'], axis = 1)
     return df, cat_cols
 
 
 
-def features_rolling(df):
+def features_rolling(df, input_raw_path = None, dir_out = None, features_group_name = None, max_rows = 10):
     cat_cols = []
     created_cols = []
 
@@ -327,13 +333,13 @@ def features_rolling(df):
 
     # Rollings
     # with sliding shift
-    for len_shift in [1,7,14]: 
+    for len_shift in [1,7,14]:
         print('Shifting period:', len_shift)
         for len_window in [7,14,30,60]:
             col_name = 'rolling_mean_tmp_'+str(len_shift)+'_'+str(len_window)
             df[col_name] = df.groupby(['id'])['demand'].transform(lambda x: x.shift(len_shift).rolling(len_window).mean())
             created_cols.append(col_name)
-    
+
     created_cols.append('date')
     created_cols.append('item_id')
 
@@ -341,7 +347,7 @@ def features_rolling(df):
 
 
 
-def features_lag(df):
+def features_lag(df, input_raw_path = None, dir_out = None, features_group_name = None, max_rows = 10):
     created_cols = []
     cat_cols = []
 
@@ -438,7 +444,7 @@ def sales_validation:
 	#lag=1
 	i=1
 	print('Shifting:', i)
-	temp_df['lag_'+str(i)] = temp_df.groupby(['id'])[TARGET].transform(lambda x: x.shift(i))	
+	temp_df['lag_'+str(i)] = temp_df.groupby(['id'])[TARGET].transform(lambda x: x.shift(i))
 	#Moving avg=(7,28)
 	temp_df1 = sales_eval[['id','d','sales']]
 	for i in [7,28]:
@@ -447,11 +453,3 @@ def sales_validation:
     	temp_df['rolling_std_'+str(i)]  = temp_df1.groupby(['id'])[TARGET].transform(lambda x: x.shift(1).rolling(i).std())
     	return temp_df
 '''
- 
-  
-  
-  
-  
-  
-  
-  
