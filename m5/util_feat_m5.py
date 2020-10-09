@@ -25,32 +25,33 @@ import numpy as np
 
 
 
-def features_time_basic(df, input_raw_path = None, dir_out = None, features_group_name = None, max_rows = 10):
-    df['date_t'] = pd.to_datetime(df['date'])
-    df['year'] = df['date_t'].dt.year
-    df['month'] = df['date_t'].dt.month
-    df['week'] = df['date_t'].dt.week
-    df['day'] = df['date_t'].dt.day
+def features_time_basic(df, coldate='date', features_group_name = None, max_rows = 10):
+    ### Generate time features, please align indentation
+    df['date_t']    = pd.to_datetime(df[coldate])
+    df['year']      = df['date_t'].dt.year
+    df['month']     = df['date_t'].dt.month
+    df['week']      = df['date_t'].dt.week
+    df['day']       = df['date_t'].dt.day
     df['dayofweek'] = df['date_t'].dt.dayofweek
-    cat_cols = []
+    cat_cols = []   ### why ?
     return df[['year', 'month', 'week', 'day', 'dayofweek', 'date', 'item_id']], cat_cols
 
 
 
 
-def features_lag(df, fname):
-    out_df = df[['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id']]
+def features_lag(df, fname, cols= ['item_id', 'dept_id', 'cat_id', 'store_id', 'state_id'] ):
+    out_df = df[cols]
     ###############################################################################
     # day lag 29~57 day and last year's day lag 1~28 day
-    day_lag = df.iloc[:,-28:]
-    day_year_lag = df.iloc[:,-393:-365]
-    day_lag.columns = [str("lag_{}_day".format(i)) for i in range(29,57)] # Rename columns
+    day_lag              = df.iloc[:,-28:]
+    day_year_lag         = df.iloc[:,-393:-365]
+    day_lag.columns      = [str("lag_{}_day".format(i)) for i in range(29,57)] # Rename columns
     day_year_lag.columns = [str("lag_{}_day_of_last_year".format(i)) for i in range(1,29)]
 
     # Rolling mean(3) and (7) and (28) and (84) 29~57 day and last year's day lag 1~28 day
-    rolling_3 = df.iloc[:,-730:].T.rolling(3).mean().T.iloc[:,-28:]
-    rolling_3.columns = [str("rolling3_lag_{}_day".format(i)) for i in range(29,57)] # Rename columns
-    rolling_3_year = df.iloc[:,-730:].T.rolling(3).mean().T.iloc[:,-393:-365]
+    rolling_3              = df.iloc[:,-730:].T.rolling(3).mean().T.iloc[:,-28:]
+    rolling_3.columns      = [str("rolling3_lag_{}_day".format(i)) for i in range(29,57)] # Rename columns
+    rolling_3_year         = df.iloc[:,-730:].T.rolling(3).mean().T.iloc[:,-393:-365]
     rolling_3_year.columns = [str("rolling3_lag_{}_day_of_last_year".format(i)) for i in range(1,29)]
 
     rolling_7 = df.iloc[:,-730:].T.rolling(7).mean().T.iloc[:,-28:]
@@ -223,10 +224,10 @@ def _get_tsfresh_melted_features_single_row(single_row_df):
     X_feat = X_feat.rename(columns = feat_col_names_mapping)
     X_feat_T = X_feat.T
 
-    X_feat_T["item_id"] = np.repeat(single_row_df["item_id"].tolist()[0], len(X_feat_T.index))
-    X_feat_T["id"] = np.repeat(single_row_df["id"].tolist()[0], len(X_feat_T.index))
-    X_feat_T["cat_id"] = np.repeat(single_row_df["cat_id"].tolist()[0], len(X_feat_T.index))
-    X_feat_T["dept_id"] = np.repeat(single_row_df["dept_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["item_id"]  = np.repeat(single_row_df["item_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["id"]       = np.repeat(single_row_df["id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["cat_id"]   = np.repeat(single_row_df["cat_id"].tolist()[0], len(X_feat_T.index))
+    X_feat_T["dept_id"]  = np.repeat(single_row_df["dept_id"].tolist()[0], len(X_feat_T.index))
     X_feat_T["store_id"] = np.repeat(single_row_df["store_id"].tolist()[0], len(X_feat_T.index))
     X_feat_T["state_id"] = np.repeat(single_row_df["state_id"].tolist()[0], len(X_feat_T.index))
     X_feat_T["variable"] = X_feat_T.index
