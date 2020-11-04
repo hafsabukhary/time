@@ -11,8 +11,8 @@ Original file is located at
 
 #### Install MLMODELS in Colab
 
-!  bash <(wget -qO- https://cutt.ly/mlmodels)
-!pip install pydantic==1.4 --force
+#!  bash <(wget -qO- https://cutt.ly/mlmodels)
+#!pip install pydantic==1.4 --force
 
 import os, time
 os.kill(os.getpid(), 9)
